@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+"""
+Batch ingestion: clone repositories using Git Smart Protocol
+(--filter=blob:none --no-checkout) and extract commit metadata.
+Writes raw data as Parquet to MinIO under:
+
+  s3://raw/git_events/repository=<owner>__<name>/commits.parquet
+
+Usage:
+    python ingest_git.py --repos torvalds/linux apache/spark
+    python ingest_git.py --repos-file repos.txt --output-path s3://raw/git_events
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import subprocess
+import tempfile
+from pathlib import Path
+
+import boto3
+import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+# ── MinIO / S3 config ──────────────────────────────────────────────────────
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
+AWS_ACCESS_KEY  = os.getenv("AWS_ACCESS_KEY_ID", "minioadmin")
+AWS_SECRET_KEY  = os.getenv("AWS_SECRET_ACCESS_KEY", "minioadmin")
+OUTPUT_BUCKET   = os.getenv("OUTPUT_BUCKET", "raw")
+
+
+def s3_client():
+    return boto3.client(
+        "s3",
+        endpoint_url=MINIO_ENDPOINT,
+        aws_access_key_id=AWS_ACCESS_KEY,
+        aws_secret_access_key=AWS_SECRET_KEY,
+    )
+
+
+# ── Git extraction ─────────────────────────────────────────────────────────
+GIT_LOG_FORMAT = (
+    "%H\x1f"   # commit hash
+    "%ae\x1f"  # author email
+    "%an\x1f"  # author name
+    "%ce\x1f"  # committer email
+    "%ai\x1f"  # author date ISO
+    "%ci\x1f"  # committer date ISO
+    "%P\x1f"   # parent hashes (space-separated)
+    "%s"        # subject (commit message first line)
+)
+
+
+def clone_repo(url: str, target_dir: str) -> None:
+    """Shallow blobless clone — fetches only tree objects, no file content."""
+    subprocess.run(
+        [
+            "git", "clone",
+            "--filter=blob:none",
+            "--no-checkout",
+            "--single-branch",
+            url, target_dir,
+        ],
+        check=True,
+        capture_output=True,
+    )
+
+
+def extract_commits(repo_dir: str) -> list[dict]:
+    """Run git log and parse into structured records."""
+    result = subprocess.run(
+        ["git", "log", f"--pretty=format:{GIT_LOG_FORMAT}", "--numstat"],
+        cwd=repo_dir,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    commits: list[dict] = []
+    current: dict | None = None
+
+    for line in result.stdout.splitlines():
+        parts = line.split("\x1f")
+        if len(parts) == 8:
+            # New commit header
+            if current:
+                commits.append(current)
+            current = {
+                "hash":            parts[0],
+                "author_email":    parts[1],
+                "author_name":     parts[2],
+                "committer_email": parts[3],
+                "author_date":     parts[4],
+                "committer_date":  parts[5],
+                "parents":         parts[6].split() if parts[6] else [],
+                "subject":         parts[7],
+                "insertions":      0,
+                "deletions":       0,
+                "files_changed":   0,
+            }
+        elif line.strip() and current is not None:
+            # numstat line: insertions \t deletions \t filename
+            cols = line.split("\t")
+            if len(cols) == 3 and cols[0].isdigit():
+                current["insertions"]    += int(cols[0])
+                current["deletions"]     += int(cols[1])
+                current["files_changed"] += 1
+
+    if current:
+        commits.append(current)
+
+    return commits
+
+
+def to_parquet_bytes(commits: list[dict]) -> bytes:
+    df = pd.DataFrame(commits)
+    df["author_date"]    = pd.to_datetime(df["author_date"],    utc=True)
+    df["committer_date"] = pd.to_datetime(df["committer_date"], utc=True)
+    df["parent_count"]   = df["parents"].apply(len)
+    df["is_merge"]       = df["parent_count"] > 1
+    df.drop(columns=["parents"], inplace=True)
+
+    table = pa.Table.from_pandas(df)
+    sink  = pa.BufferOutputStream()
+    pq.write_table(table, sink, compression="snappy")
+    return sink.getvalue().to_pybytes()
+
+
+def upload_to_minio(data: bytes, bucket: str, key: str) -> None:
+    import io
+    s3 = s3_client()
+    s3.put_object(Bucket=bucket, Key=key, Body=io.BytesIO(data))
+    print(f"  ✓ Uploaded s3://{bucket}/{key}  ({len(data) / 1024:.1f} KB)")
+
+
+# ── Main ───────────────────────────────────────────────────────────────────
+
+def ingest_repo(full_name: str) -> None:
+    owner, name = full_name.strip().split("/")
+    url = f"https://github.com/{full_name}.git"
+    partition = f"repository={owner}__{name}"
+    s3_key    = f"git_events/{partition}/commits.parquet"
+
+    print(f"\n→ Ingesting {full_name}")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        print(f"  Cloning (blobless)…")
+        clone_repo(url, tmpdir)
+
+        print(f"  Extracting commit log…")
+        commits = extract_commits(tmpdir)
+        print(f"  Found {len(commits):,} commits")
+
+        if not commits:
+            print("  ⚠ No commits found, skipping.")
+            return
+
+        data = to_parquet_bytes(commits)
+        upload_to_minio(data, OUTPUT_BUCKET, s3_key)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Git batch ingestion → MinIO Parquet")
+    group  = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--repos",      nargs="+", help="List of owner/repo strings")
+    group.add_argument("--repos-file", type=Path, help="File with one owner/repo per line")
+    args = parser.parse_args()
+
+    repos: list[str]
+    if args.repos:
+        repos = args.repos
+    else:
+        repos = [
+            line.strip()
+            for line in args.repos_file.read_text().splitlines()
+            if line.strip() and not line.startswith("#")
+        ]
+
+    for repo in repos:
+        try:
+            ingest_repo(repo)
+        except Exception as exc:
+            print(f"  ✗ Failed {repo}: {exc}")
+
+    print("\n✓ Batch ingestion complete.")
+
+
+if __name__ == "__main__":
+    main()
