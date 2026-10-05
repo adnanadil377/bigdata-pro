@@ -186,6 +186,8 @@ services:
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
+    volumes:
+      - ./serving/api:/app
     networks:
       - lakehouse
 

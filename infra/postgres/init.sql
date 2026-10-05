@@ -12,6 +12,9 @@ CREATE TABLE IF NOT EXISTS repositories (
     stars           INT  DEFAULT 0,
     forks           INT  DEFAULT 0,
     language        TEXT,
+    default_branch  TEXT DEFAULT 'main',
+    head_commit_hash TEXT,
+    is_private      BOOLEAN DEFAULT FALSE,
     created_at      TIMESTAMPTZ,
     synced_at       TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE (owner, name)
@@ -133,3 +136,25 @@ CREATE TABLE IF NOT EXISTS realtime_events (
 CREATE INDEX ON realtime_events (repo_full_name, received_at DESC);
 CREATE INDEX ON commit_stats (repo_id, period DESC);
 CREATE INDEX ON collaboration_edges (repo_id, weight DESC);
+
+-- ──────────────────────────────────────────────────────────
+-- Ingestion Jobs (Asynchronous repository processing)
+-- ──────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS ingestion_jobs (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    repo_url        TEXT NOT NULL,
+    repo_owner      TEXT,
+    repo_name       TEXT,
+    branch          TEXT,
+    status          TEXT NOT NULL DEFAULT 'queued', -- queued, cloning, extracting, lakehouse_write, analytics, completed, failed
+    progress_pct    INT DEFAULT 0,
+    current_step    TEXT DEFAULT 'Queued in pipeline',
+    total_commits   INT DEFAULT 0,
+    error_message   TEXT,
+    started_at      TIMESTAMPTZ DEFAULT NOW(),
+    completed_at    TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ingestion_jobs_created ON ingestion_jobs (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ingestion_jobs_repo ON ingestion_jobs (repo_owner, repo_name);

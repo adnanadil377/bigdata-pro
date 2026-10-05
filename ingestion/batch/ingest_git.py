@@ -52,14 +52,20 @@ GIT_LOG_FORMAT = (
 )
 
 
-def clone_repo(url: str, target_dir: str, depth: int | None = 200) -> None:
-    """Clone repo — shallow clone when depth is provided, blobless otherwise."""
-    cmd = ["git", "clone", "--single-branch"]
+def clone_repo(url: str, target_dir: str, depth: int | None = None, branch: str | None = None, token: str | None = None) -> None:
+    """Clone repo — full single-branch history with no depth limit unless specified."""
+    clone_url = url
+    if token and token.strip() and "github.com" in url:
+        # inject token securely
+        clean_url = url.replace("https://", "").replace("http://", "")
+        clone_url = f"https://x-access-token:{token.strip()}@{clean_url}"
+
+    cmd = ["git", "clone", "--single-branch", "--no-checkout"]
+    if branch:
+        cmd.extend(["-b", branch])
     if depth and depth > 0:
         cmd.extend(["--depth", str(depth)])
-    else:
-        cmd.extend(["--filter=blob:none", "--no-checkout"])
-    cmd.extend([url, target_dir])
+    cmd.extend([clone_url, target_dir])
     subprocess.run(
         cmd,
         check=True,
@@ -136,16 +142,16 @@ def upload_to_minio(data: bytes, bucket: str, key: str) -> None:
 
 # ── Main ───────────────────────────────────────────────────────────────────
 
-def ingest_repo(full_name: str, depth: int | None = 200) -> None:
+def ingest_repo(full_name: str, depth: int | None = None, branch: str | None = None, token: str | None = None) -> None:
     owner, name = full_name.strip().split("/")
     url = f"https://github.com/{full_name}.git"
     partition = f"repository={owner}__{name}"
     s3_key    = f"git_events/{partition}/commits.parquet"
 
-    print(f"\n→ Ingesting {full_name} (depth={depth or 'all'})")
+    print(f"\n→ Ingesting {full_name} (branch={branch or 'default'}, depth={depth or 'all (no limit)'})")
     with tempfile.TemporaryDirectory() as tmpdir:
         print(f"  Cloning…")
-        clone_repo(url, tmpdir, depth=depth)
+        clone_repo(url, tmpdir, depth=depth, branch=branch, token=token)
 
         print(f"  Extracting commit log…")
         commits = extract_commits(tmpdir)
@@ -164,7 +170,9 @@ def main() -> None:
     group  = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--repos",      nargs="+", help="List of owner/repo strings")
     group.add_argument("--repos-file", type=Path, help="File with one owner/repo per line")
-    parser.add_argument("--depth",      type=int, default=200, help="Commit depth limit (default: 200, 0 for all)")
+    parser.add_argument("--branch",    type=str, default=None, help="Target branch (default: remote default branch)")
+    parser.add_argument("--token",     type=str, default=None, help="GitHub Personal Access Token for private repositories")
+    parser.add_argument("--depth",     type=int, default=0, help="Commit depth limit (default: 0 for all / no depth limit)")
     args = parser.parse_args()
 
     repos: list[str]
@@ -180,7 +188,7 @@ def main() -> None:
     depth = args.depth if args.depth > 0 else None
     for repo in repos:
         try:
-            ingest_repo(repo, depth=depth)
+            ingest_repo(repo, depth=depth, branch=args.branch, token=args.token)
         except Exception as exc:
             print(f"  ✗ Failed {repo}: {exc}")
 
