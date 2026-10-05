@@ -8,13 +8,13 @@ import org.apache.spark.sql.types._
  * Batch ETL: Raw Parquet (MinIO) → Apache Iceberg lakehouse tables
  *
  * Reads:
- *   s3a://raw/git_events/repository=*/commits.parquet
+ *   s3a://raw/git_events/repository=* /commits.parquet
  *
  * Writes Iceberg tables (catalog: lakehouse):
- *   lakehouse.github.commits           – deduplicated commit records
- *   lakehouse.github.contributor_stats – monthly rollup per contributor/repo
- *   lakehouse.github.commit_types      – commit message classification
- *   lakehouse.github.file_hotspots     – file-change frequency per repo
+ *   lakehouse.github.commits           - deduplicated commit records
+ *   lakehouse.github.contributor_stats - monthly rollup per contributor/repo
+ *   lakehouse.github.commit_types      - commit message classification
+ *   lakehouse.github.file_hotspots     - file-change frequency per repo
  *
  * Run with:
  *   spark-submit --master spark://spark-master:7077 \
@@ -55,7 +55,7 @@ object CommitETL {
       .config("spark.sql.catalog.lakehouse",
         "org.apache.iceberg.spark.SparkCatalog")
       .config("spark.sql.catalog.lakehouse.type", "hadoop")
-      .config("spark.sql.catalog.lakehouse.warehouse", "s3a://warehouse/")
+      .config("spark.sql.catalog.lakehouse.warehouse", "s3a://warehouse/data")
       // S3A / MinIO settings
       .config("spark.hadoop.fs.s3a.endpoint",               "http://minio:9000")
       .config("spark.hadoop.fs.s3a.access.key",             "minioadmin")
@@ -169,7 +169,7 @@ object CommitETL {
 
     // ── 7. Done ─────────────────────────────────────────────────────────────
     println("✓ CommitETL complete.")
-    println(s"  Total commits processed: ${commits.count():,}")
+    println(s"  Total commits processed: ${commits.count()}")
 
     spark.stop()
   }

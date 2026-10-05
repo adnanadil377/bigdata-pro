@@ -1,0 +1,25 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# SBT & Scala
+target/
+spark/target/
+spark/project/target/
+spark/project/project/
+.bsp/
+.metals/
+.bloop/
+
+# Derby & local metastore
+spark/derby.log
+spark/metastore_db/
+metastore_db/
+derby.log
+
+# Node & Frontend
+node_modules/
+dist/
+.DS_Store

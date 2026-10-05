@@ -1,20 +1,18 @@
-version: "3.9"
-
 # ─────────────────────────────────────────
 #  GitHub Contribution Analytics Lakehouse
 #  Local Docker Compose Stack
 # ─────────────────────────────────────────
 
 x-spark-common: &spark-common
-  image: bitnami/spark:3.5
+  image: apache/spark:3.5.3
+  command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
   environment:
-    - SPARK_MODE=worker
-    - SPARK_MASTER_URL=spark://spark-master:7077
-    - SPARK_WORKER_MEMORY=2G
     - SPARK_WORKER_CORES=2
+    - SPARK_WORKER_MEMORY=2G
     - AWS_ACCESS_KEY_ID=minioadmin
     - AWS_SECRET_ACCESS_KEY=minioadmin
-    - SPARK_EXTRA_CLASSPATH=/opt/bitnami/spark/jars/iceberg-spark-runtime.jar
+  volumes:
+    - ./spark:/opt/spark/work-dir
   depends_on:
     - spark-master
   networks:
@@ -24,7 +22,7 @@ services:
 
   # ── Messaging ─────────────────────────────────────────────────────────────
   zookeeper:
-    image: confluentinc/cp-zookeeper:7.6.0
+    image: confluentinc/cp-zookeeper:7.5.0
     container_name: zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
@@ -35,7 +33,7 @@ services:
       - lakehouse
 
   kafka:
-    image: confluentinc/cp-kafka:7.6.0
+    image: confluentinc/cp-kafka:7.5.0
     container_name: kafka
     depends_on:
       - zookeeper
@@ -69,7 +67,7 @@ services:
 
   # ── Object Storage (S3-compatible) ────────────────────────────────────────
   minio:
-    image: minio/minio:latest
+    image: cgr.dev/chainguard/minio:latest
     container_name: minio
     command: server /data --console-address ":9001"
     ports:
@@ -84,31 +82,32 @@ services:
       - lakehouse
 
   minio-init:
-    image: minio/mc:latest
+    image: cgr.dev/chainguard/minio-client:latest-dev
     container_name: minio-init
     depends_on:
       - minio
     entrypoint: >
       /bin/sh -c "
-      sleep 5;
+      sleep 3;
       mc alias set local http://minio:9000 minioadmin minioadmin;
       mc mb --ignore-existing local/lakehouse;
       mc mb --ignore-existing local/warehouse;
       mc mb --ignore-existing local/raw;
-      echo 'Buckets created.';
+      echo 'Buckets created successfully.';
       "
     networks:
       - lakehouse
 
   # ── Apache Spark ──────────────────────────────────────────────────────────
   spark-master:
-    image: bitnami/spark:3.5
+    image: apache/spark:3.5.3
     container_name: spark-master
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master", "--host", "spark-master"]
     environment:
-      - SPARK_MODE=master
-      - SPARK_MASTER_HOST=spark-master
       - AWS_ACCESS_KEY_ID=minioadmin
       - AWS_SECRET_ACCESS_KEY=minioadmin
+    volumes:
+      - ./spark:/opt/spark/work-dir
     ports:
       - "7077:7077"   # Spark master
       - "8080:8080"   # Spark UI
@@ -121,16 +120,11 @@ services:
     ports:
       - "8081:8081"
 
-  spark-worker-2:
-    <<: *spark-common
-    container_name: spark-worker-2
-    ports:
-      - "8082:8081"
-
-  # ── Hive Metastore ────────────────────────────────────────────────────────
+  # ── Hive Metastore (Optional profile) ──────────────────────────────────────
   hive-metastore-db:
-    image: postgres:15-alpine
+    image: postgres:15
     container_name: hive-metastore-db
+    profiles: ["metastore"]
     environment:
       POSTGRES_DB: metastore
       POSTGRES_USER: hive
@@ -141,8 +135,9 @@ services:
       - lakehouse
 
   hive-metastore:
-    image: apache/hive:3.1.3
+    image: apache/hive:4.0.0
     container_name: hive-metastore
+    profiles: ["metastore"]
     depends_on:
       - hive-metastore-db
     environment:
@@ -160,7 +155,7 @@ services:
 
   # ── Serving Database ──────────────────────────────────────────────────────
   postgres:
-    image: postgres:15-alpine
+    image: postgres:15
     container_name: postgres
     environment:
       POSTGRES_DB: github_analytics
@@ -174,30 +169,34 @@ services:
     networks:
       - lakehouse
 
-  # ── FastAPI Backend ────────────────────────────────────────────────────────
+  # ── FastAPI Backend ──────────────────────────────────────────────────────
+  # Start with: docker compose --profile app up
   api:
     build:
       context: ./serving/api
       dockerfile: Dockerfile
     container_name: api
+    profiles: ["app"]
     depends_on:
       - postgres
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql+asyncpg://analytics:analytics@postgres:5432/github_analytics
+      DATABASE_URL: postgresql://analytics:analytics@postgres:5432/github_analytics
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
     networks:
       - lakehouse
 
-  # ── React Frontend ─────────────────────────────────────────────────────────
+  # ── React Frontend ────────────────────────────────────────────────────────
+  # Start with: docker compose --profile app up
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: frontend
+    profiles: ["app"]
     ports:
       - "3000:3000"
     depends_on:

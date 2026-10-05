@@ -5,6 +5,13 @@ scalaVersion := "2.12.18"
 val sparkVersion  = "3.5.0"
 val icebergVersion = "1.4.3"
 
+Compile / unmanagedSourceDirectories ++= Seq(
+  baseDirectory.value / "etl/src/main/scala",
+  baseDirectory.value / "streaming/src/main/scala",
+  baseDirectory.value / "ml/src/main/scala",
+  baseDirectory.value / "graph/src/main/scala",
+)
+
 libraryDependencies ++= Seq(
   // Spark core
   "org.apache.spark" %% "spark-core"                  % sparkVersion % "provided",
@@ -20,6 +27,9 @@ libraryDependencies ++= Seq(
   // AWS S3 / MinIO
   "org.apache.hadoop"   % "hadoop-aws"                % "3.3.4",
   "com.amazonaws"       % "aws-java-sdk-bundle"        % "1.12.367",
+
+  // PostgreSQL JDBC driver
+  "org.postgresql"      % "postgresql"                 % "42.7.2",
 
   // Testing
   "org.scalatest"      %% "scalatest"                  % "3.2.17" % Test,

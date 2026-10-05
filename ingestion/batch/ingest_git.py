@@ -52,16 +52,16 @@ GIT_LOG_FORMAT = (
 )
 
 
-def clone_repo(url: str, target_dir: str) -> None:
-    """Shallow blobless clone — fetches only tree objects, no file content."""
+def clone_repo(url: str, target_dir: str, depth: int | None = 200) -> None:
+    """Clone repo — shallow clone when depth is provided, blobless otherwise."""
+    cmd = ["git", "clone", "--single-branch"]
+    if depth and depth > 0:
+        cmd.extend(["--depth", str(depth)])
+    else:
+        cmd.extend(["--filter=blob:none", "--no-checkout"])
+    cmd.extend([url, target_dir])
     subprocess.run(
-        [
-            "git", "clone",
-            "--filter=blob:none",
-            "--no-checkout",
-            "--single-branch",
-            url, target_dir,
-        ],
+        cmd,
         check=True,
         capture_output=True,
     )
@@ -115,15 +115,15 @@ def extract_commits(repo_dir: str) -> list[dict]:
 
 def to_parquet_bytes(commits: list[dict]) -> bytes:
     df = pd.DataFrame(commits)
-    df["author_date"]    = pd.to_datetime(df["author_date"],    utc=True)
-    df["committer_date"] = pd.to_datetime(df["committer_date"], utc=True)
+    df["author_date"]    = pd.to_datetime(df["author_date"],    utc=True).dt.tz_localize(None).astype("datetime64[us]")
+    df["committer_date"] = pd.to_datetime(df["committer_date"], utc=True).dt.tz_localize(None).astype("datetime64[us]")
     df["parent_count"]   = df["parents"].apply(len)
     df["is_merge"]       = df["parent_count"] > 1
     df.drop(columns=["parents"], inplace=True)
 
     table = pa.Table.from_pandas(df)
     sink  = pa.BufferOutputStream()
-    pq.write_table(table, sink, compression="snappy")
+    pq.write_table(table, sink, compression="snappy", coerce_timestamps="us")
     return sink.getvalue().to_pybytes()
 
 
@@ -136,16 +136,16 @@ def upload_to_minio(data: bytes, bucket: str, key: str) -> None:
 
 # ── Main ───────────────────────────────────────────────────────────────────
 
-def ingest_repo(full_name: str) -> None:
+def ingest_repo(full_name: str, depth: int | None = 200) -> None:
     owner, name = full_name.strip().split("/")
     url = f"https://github.com/{full_name}.git"
     partition = f"repository={owner}__{name}"
     s3_key    = f"git_events/{partition}/commits.parquet"
 
-    print(f"\n→ Ingesting {full_name}")
+    print(f"\n→ Ingesting {full_name} (depth={depth or 'all'})")
     with tempfile.TemporaryDirectory() as tmpdir:
-        print(f"  Cloning (blobless)…")
-        clone_repo(url, tmpdir)
+        print(f"  Cloning…")
+        clone_repo(url, tmpdir, depth=depth)
 
         print(f"  Extracting commit log…")
         commits = extract_commits(tmpdir)
@@ -164,6 +164,7 @@ def main() -> None:
     group  = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--repos",      nargs="+", help="List of owner/repo strings")
     group.add_argument("--repos-file", type=Path, help="File with one owner/repo per line")
+    parser.add_argument("--depth",      type=int, default=200, help="Commit depth limit (default: 200, 0 for all)")
     args = parser.parse_args()
 
     repos: list[str]
@@ -176,9 +177,10 @@ def main() -> None:
             if line.strip() and not line.startswith("#")
         ]
 
+    depth = args.depth if args.depth > 0 else None
     for repo in repos:
         try:
-            ingest_repo(repo)
+            ingest_repo(repo, depth=depth)
         except Exception as exc:
             print(f"  ✗ Failed {repo}: {exc}")
 
