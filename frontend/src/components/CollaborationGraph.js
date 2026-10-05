@@ -1,16 +1,17 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
-import { Filter, Network } from 'lucide-react';
+import { Filter } from 'lucide-react';
 export const CollaborationGraph = ({ data, isLoading, minWeight, onChangeMinWeight, }) => {
     const svgRef = useRef(null);
     const containerRef = useRef(null);
+    const [searchTerm, setSearchTerm] = useState('');
     const [hoveredNode, setHoveredNode] = useState(null);
     useEffect(() => {
         if (!svgRef.current || !containerRef.current || !data || data.nodes.length === 0)
             return;
         const width = containerRef.current.clientWidth || 800;
-        const height = 540;
+        const height = 520;
         const svg = d3.select(svgRef.current);
         svg.selectAll('*').remove();
         // Calculate node degree from edges
@@ -35,57 +36,47 @@ export const CollaborationGraph = ({ data, isLoading, minWeight, onChangeMinWeig
         const g = svg.append('g');
         const zoom = d3
             .zoom()
-            .scaleExtent([0.2, 4])
+            .scaleExtent([0.3, 3])
             .on('zoom', (event) => {
             g.attr('transform', event.transform);
         });
         svg.call(zoom);
-        // Defs for gradients & glows
-        const defs = svg.append('defs');
-        const filter = defs.append('filter').attr('id', 'glow');
-        filter.append('feGaussianBlur').attr('stdDeviation', '3').attr('result', 'coloredBlur');
-        const feMerge = filter.append('feMerge');
-        feMerge.append('feMergeNode').attr('in', 'coloredBlur');
-        feMerge.append('feMergeNode').attr('in', 'SourceGraphic');
         // Simulation
         const simulation = d3
             .forceSimulation(nodes)
             .force('link', d3
             .forceLink(edges)
             .id((d) => d.id)
-            .distance((d) => Math.max(40, 160 - Math.min(100, d.weight * 10))))
-            .force('charge', d3.forceManyBody().strength(-120))
+            .distance((d) => Math.max(35, 140 - Math.min(80, d.weight * 8))))
+            .force('charge', d3.forceManyBody().strength(-100))
             .force('center', d3.forceCenter(width / 2, height / 2))
-            .force('collision', d3.forceCollide().radius((d) => Math.sqrt(d.degree || 1) * 4 + 10));
-        // Edges
+            .force('collision', d3.forceCollide().radius((d) => Math.sqrt(d.degree || 1) * 3 + 8));
+        // Edges (hairline subtle links)
         const link = g
             .append('g')
-            .attr('stroke', 'rgba(99, 102, 241, 0.25)')
             .selectAll('line')
             .data(edges)
             .join('line')
-            .attr('stroke-width', (d) => Math.min(6, Math.max(1, Math.sqrt(d.weight || 1))))
-            .attr('stroke-opacity', 0.6);
+            .attr('stroke', '#27272a')
+            .attr('stroke-width', (d) => Math.min(3, Math.max(1, Math.sqrt(d.weight || 1))))
+            .attr('stroke-opacity', 0.8);
         // Nodes
         const node = g
             .append('g')
             .selectAll('circle')
             .data(nodes)
             .join('circle')
-            .attr('r', (d) => Math.min(22, Math.max(5, Math.sqrt(d.degree || 1) * 3 + 4)))
+            .attr('r', (d) => Math.min(18, Math.max(5, Math.sqrt(d.degree || 1) * 2.5 + 4)))
             .attr('fill', (d) => {
             const deg = d.degree || 1;
             if (deg > 15)
-                return '#ec4899'; // Core maintainer
+                return '#f4f4f5'; // Core Maintainer (bright crisp white)
             if (deg > 6)
-                return '#6366f1'; // Active regular
-            if (deg > 2)
-                return '#06b6d4'; // Casual
-            return '#64748b'; // Occasional
+                return '#a1a1aa'; // Active regular (zinc-400)
+            return '#3f3f46'; // Casual (zinc-700)
         })
-            .attr('stroke', '#ffffff')
-            .attr('stroke-width', 1.5)
-            .attr('stroke-opacity', 0.8)
+            .attr('stroke', '#18181b')
+            .attr('stroke-width', 2)
             .attr('cursor', 'pointer')
             .call(d3
             .drag()
@@ -109,25 +100,30 @@ export const CollaborationGraph = ({ data, isLoading, minWeight, onChangeMinWeig
             const [x, y] = d3.pointer(event, containerRef.current);
             setHoveredNode({ id: d.id, degree: d.degree || 1, x, y });
             if (event.currentTarget) {
-                d3.select(event.currentTarget).attr('stroke', '#06b6d4').attr('stroke-width', 3);
+                d3.select(event.currentTarget)
+                    .attr('stroke', '#ffffff')
+                    .attr('stroke-width', 3);
             }
         })
             .on('mouseleave', (event) => {
             setHoveredNode(null);
             if (event.currentTarget) {
-                d3.select(event.currentTarget).attr('stroke', '#ffffff').attr('stroke-width', 1.5);
+                d3.select(event.currentTarget)
+                    .attr('stroke', '#18181b')
+                    .attr('stroke-width', 2);
             }
         });
-        // Labels for top maintainers
+        // Labels for top core maintainers
         const label = g
             .append('g')
             .selectAll('text')
-            .data(nodes.filter((n) => (n.degree || 0) >= 6))
+            .data(nodes.filter((n) => (n.degree || 0) >= 8))
             .join('text')
             .text((d) => d.id)
-            .attr('font-size', '10px')
+            .attr('font-size', '11px')
             .attr('font-family', 'var(--font-sans)')
-            .attr('fill', 'var(--text-muted)')
+            .attr('font-weight', '500')
+            .attr('fill', '#d4d4d8')
             .attr('dx', 10)
             .attr('dy', 4)
             .attr('pointer-events', 'none');
@@ -144,47 +140,55 @@ export const CollaborationGraph = ({ data, isLoading, minWeight, onChangeMinWeig
             simulation.stop();
         };
     }, [data]);
-    return (_jsxs("div", { className: "glass-panel", style: { padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }, children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }, children: [_jsxs("div", { children: [_jsxs("h2", { style: { fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '8px' }, children: [_jsx(Network, { size: 20, color: "var(--primary)" }), "Developer Collaboration Network"] }), _jsx("p", { style: { color: 'var(--text-dim)', fontSize: '0.825rem' }, children: "Force-directed graph of shared module co-authorship. Nodes sized by collaboration degree." })] }), _jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }, children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: 'var(--text-muted)' }, children: [_jsx(Filter, { size: 14 }), _jsx("span", { children: "Min Shared Edits:" }), _jsx("input", { type: "range", min: "1", max: "10", value: minWeight, onChange: (e) => onChangeMinWeight(Number(e.target.value)), style: { width: '80px', accentColor: 'var(--primary)' } }), _jsx("span", { className: "mono badge badge-indigo", children: minWeight })] }), _jsxs("span", { className: "badge badge-cyan", children: [data.nodes.length, " Developers \u2022 ", data.edges.length, " Edges"] })] })] }), _jsxs("div", { ref: containerRef, style: {
+    return (_jsxs("div", { className: "panel", style: { padding: '20px 24px' }, children: [_jsxs("div", { style: {
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '12px',
+                    marginBottom: '16px',
+                }, children: [_jsxs("div", { children: [_jsx("div", { style: { fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }, children: "Developer Collaboration Network" }), _jsx("div", { style: { fontSize: '0.75rem', color: 'var(--text-muted)' }, children: "Co-authorship topology extracted from multi-author file commits." })] }), _jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '14px' }, children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.775rem', color: 'var(--text-muted)' }, children: [_jsx(Filter, { size: 13 }), _jsx("span", { children: "Shared edit threshold:" }), _jsx("input", { type: "range", min: "1", max: "10", value: minWeight, onChange: (e) => onChangeMinWeight(Number(e.target.value)), style: { width: '70px', accentColor: '#f4f4f5' } }), _jsx("span", { className: "mono badge badge-neutral", children: minWeight })] }), _jsxs("span", { className: "badge badge-neutral", children: [data.nodes.length, " nodes \u2022 ", data.edges.length, " edges"] })] })] }), _jsxs("div", { ref: containerRef, style: {
                     position: 'relative',
                     width: '100%',
-                    height: '540px',
-                    background: 'radial-gradient(circle at center, rgba(30, 41, 59, 0.4) 0%, rgba(10, 15, 29, 0.8) 100%)',
-                    borderRadius: 'var(--radius-md)',
-                    overflow: 'hidden',
+                    height: '520px',
+                    background: '#0d0d0f',
+                    borderRadius: 'var(--radius-sm)',
                     border: '1px solid var(--border-subtle)',
+                    overflow: 'hidden',
                 }, children: [isLoading && (_jsx("div", { style: {
                             position: 'absolute',
                             inset: 0,
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            background: 'rgba(10, 15, 29, 0.7)',
+                            background: 'rgba(9, 9, 11, 0.7)',
                             zIndex: 10,
-                            color: 'var(--primary-light)',
-                        }, children: _jsxs("div", { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }, children: [_jsx(Network, { size: 32, style: { animation: 'spin 1.5s linear infinite' } }), _jsx("span", { style: { fontSize: '0.875rem' }, children: "Rendering collaboration topology\u2026" })] }) })), _jsx("svg", { ref: svgRef, width: "100%", height: "100%" }), hoveredNode && (_jsxs("div", { style: {
+                            color: 'var(--text-muted)',
+                            fontSize: '0.85rem',
+                        }, children: "Calculating topology\u2026" })), _jsx("svg", { ref: svgRef, width: "100%", height: "100%" }), hoveredNode && (_jsxs("div", { style: {
                             position: 'absolute',
-                            left: `${hoveredNode.x + 12}px`,
-                            top: `${hoveredNode.y - 12}px`,
-                            background: 'rgba(15, 23, 42, 0.95)',
-                            border: '1px solid rgba(99, 102, 241, 0.4)',
-                            borderRadius: 'var(--radius-sm)',
-                            padding: '6px 12px',
-                            fontSize: '0.8rem',
+                            left: `${hoveredNode.x + 10}px`,
+                            top: `${hoveredNode.y - 10}px`,
+                            background: '#18181b',
+                            border: '1px solid var(--border-primary)',
+                            borderRadius: 'var(--radius-xs)',
+                            padding: '6px 10px',
+                            fontSize: '0.775rem',
                             pointerEvents: 'none',
                             zIndex: 20,
-                            boxShadow: 'var(--shadow-md)',
-                        }, children: [_jsx("div", { style: { fontWeight: 600, color: 'white' }, children: hoveredNode.id }), _jsxs("div", { style: { color: 'var(--text-dim)', fontSize: '0.725rem' }, children: ["Shared module co-edits with ", hoveredNode.degree, " developer(s)"] })] })), _jsxs("div", { style: {
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                        }, children: [_jsx("div", { style: { fontWeight: 600, color: 'var(--text-primary)' }, children: hoveredNode.id }), _jsxs("div", { style: { color: 'var(--text-dim)', fontSize: '0.7rem' }, children: ["Connected to ", hoveredNode.degree, " collaborator(s)"] })] })), _jsxs("div", { style: {
                             position: 'absolute',
-                            bottom: '12px',
+                            bottom: '10px',
                             left: '12px',
-                            background: 'rgba(15, 23, 42, 0.85)',
-                            border: '1px solid var(--border-subtle)',
-                            borderRadius: 'var(--radius-sm)',
-                            padding: '8px 12px',
-                            fontSize: '0.75rem',
                             display: 'flex',
                             alignItems: 'center',
                             gap: '12px',
-                            backdropFilter: 'blur(8px)',
-                        }, children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '5px' }, children: [_jsx("span", { style: { width: '8px', height: '8px', borderRadius: '50%', background: '#ec4899' } }), _jsx("span", { style: { color: 'var(--text-muted)' }, children: "Core Maintainer" })] }), _jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '5px' }, children: [_jsx("span", { style: { width: '8px', height: '8px', borderRadius: '50%', background: '#6366f1' } }), _jsx("span", { style: { color: 'var(--text-muted)' }, children: "Regular" })] }), _jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '5px' }, children: [_jsx("span", { style: { width: '8px', height: '8px', borderRadius: '50%', background: '#06b6d4' } }), _jsx("span", { style: { color: 'var(--text-muted)' }, children: "Casual" })] })] })] })] }));
+                            fontSize: '0.725rem',
+                            color: 'var(--text-muted)',
+                            background: 'rgba(13, 13, 15, 0.9)',
+                            padding: '4px 10px',
+                            borderRadius: 'var(--radius-xs)',
+                            border: '1px solid var(--border-subtle)',
+                        }, children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '5px' }, children: [_jsx("span", { style: { width: '8px', height: '8px', borderRadius: '50%', background: '#f4f4f5' } }), _jsx("span", { children: "Core Maintainer" })] }), _jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '5px' }, children: [_jsx("span", { style: { width: '8px', height: '8px', borderRadius: '50%', background: '#a1a1aa' } }), _jsx("span", { children: "Regular" })] }), _jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '5px' }, children: [_jsx("span", { style: { width: '8px', height: '8px', borderRadius: '50%', background: '#3f3f46' } }), _jsx("span", { children: "Casual" })] })] })] })] }));
 };

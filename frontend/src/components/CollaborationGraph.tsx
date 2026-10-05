@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import * as d3 from 'd3'
-import { Filter, Network } from 'lucide-react'
+import { Filter, Layers, Search } from 'lucide-react'
 import type { CollaborationGraphData, GraphNode } from '../types'
 
 interface CollaborationGraphProps {
@@ -18,13 +18,14 @@ export const CollaborationGraph: React.FC<CollaborationGraphProps> = ({
 }) => {
   const svgRef = useRef<SVGSVGElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const [searchTerm, setSearchTerm] = useState('')
   const [hoveredNode, setHoveredNode] = useState<{ id: string; degree: number; x: number; y: number } | null>(null)
 
   useEffect(() => {
     if (!svgRef.current || !containerRef.current || !data || data.nodes.length === 0) return
 
     const width = containerRef.current.clientWidth || 800
-    const height = 540
+    const height = 520
 
     const svg = d3.select(svgRef.current)
     svg.selectAll('*').remove()
@@ -55,20 +56,12 @@ export const CollaborationGraph: React.FC<CollaborationGraphProps> = ({
 
     const zoom = d3
       .zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.2, 4])
+      .scaleExtent([0.3, 3])
       .on('zoom', (event) => {
         g.attr('transform', event.transform)
       })
 
     svg.call(zoom)
-
-    // Defs for gradients & glows
-    const defs = svg.append('defs')
-    const filter = defs.append('filter').attr('id', 'glow')
-    filter.append('feGaussianBlur').attr('stdDeviation', '3').attr('result', 'coloredBlur')
-    const feMerge = filter.append('feMerge')
-    feMerge.append('feMergeNode').attr('in', 'coloredBlur')
-    feMerge.append('feMergeNode').attr('in', 'SourceGraphic')
 
     // Simulation
     const simulation = d3
@@ -78,21 +71,21 @@ export const CollaborationGraph: React.FC<CollaborationGraphProps> = ({
         d3
           .forceLink(edges)
           .id((d: any) => d.id)
-          .distance((d: any) => Math.max(40, 160 - Math.min(100, d.weight * 10)))
+          .distance((d: any) => Math.max(35, 140 - Math.min(80, d.weight * 8)))
       )
-      .force('charge', d3.forceManyBody().strength(-120))
+      .force('charge', d3.forceManyBody().strength(-100))
       .force('center', d3.forceCenter(width / 2, height / 2))
-      .force('collision', d3.forceCollide().radius((d: any) => Math.sqrt(d.degree || 1) * 4 + 10))
+      .force('collision', d3.forceCollide().radius((d: any) => Math.sqrt(d.degree || 1) * 3 + 8))
 
-    // Edges
+    // Edges (hairline subtle links)
     const link = g
       .append('g')
-      .attr('stroke', 'rgba(99, 102, 241, 0.25)')
       .selectAll('line')
       .data(edges)
       .join('line')
-      .attr('stroke-width', (d: any) => Math.min(6, Math.max(1, Math.sqrt(d.weight || 1))))
-      .attr('stroke-opacity', 0.6)
+      .attr('stroke', '#27272a')
+      .attr('stroke-width', (d: any) => Math.min(3, Math.max(1, Math.sqrt(d.weight || 1))))
+      .attr('stroke-opacity', 0.8)
 
     // Nodes
     const node = g
@@ -100,17 +93,15 @@ export const CollaborationGraph: React.FC<CollaborationGraphProps> = ({
       .selectAll('circle')
       .data(nodes)
       .join('circle')
-      .attr('r', (d: any) => Math.min(22, Math.max(5, Math.sqrt(d.degree || 1) * 3 + 4)))
+      .attr('r', (d: any) => Math.min(18, Math.max(5, Math.sqrt(d.degree || 1) * 2.5 + 4)))
       .attr('fill', (d: any) => {
         const deg = d.degree || 1
-        if (deg > 15) return '#ec4899' // Core maintainer
-        if (deg > 6) return '#6366f1'  // Active regular
-        if (deg > 2) return '#06b6d4'  // Casual
-        return '#64748b'              // Occasional
+        if (deg > 15) return '#f4f4f5' // Core Maintainer (bright crisp white)
+        if (deg > 6) return '#a1a1aa'  // Active regular (zinc-400)
+        return '#3f3f46'              // Casual (zinc-700)
       })
-      .attr('stroke', '#ffffff')
-      .attr('stroke-width', 1.5)
-      .attr('stroke-opacity', 0.8)
+      .attr('stroke', '#18181b')
+      .attr('stroke-width', 2)
       .attr('cursor', 'pointer')
       .call(
         d3
@@ -134,26 +125,31 @@ export const CollaborationGraph: React.FC<CollaborationGraphProps> = ({
         const [x, y] = d3.pointer(event, containerRef.current)
         setHoveredNode({ id: d.id, degree: d.degree || 1, x, y })
         if (event.currentTarget) {
-          d3.select(event.currentTarget as SVGCircleElement).attr('stroke', '#06b6d4').attr('stroke-width', 3)
+          d3.select(event.currentTarget as SVGCircleElement)
+            .attr('stroke', '#ffffff')
+            .attr('stroke-width', 3)
         }
       })
       .on('mouseleave', (event) => {
         setHoveredNode(null)
         if (event.currentTarget) {
-          d3.select(event.currentTarget as SVGCircleElement).attr('stroke', '#ffffff').attr('stroke-width', 1.5)
+          d3.select(event.currentTarget as SVGCircleElement)
+            .attr('stroke', '#18181b')
+            .attr('stroke-width', 2)
         }
       })
 
-    // Labels for top maintainers
+    // Labels for top core maintainers
     const label = g
       .append('g')
       .selectAll('text')
-      .data(nodes.filter((n) => (n.degree || 0) >= 6))
+      .data(nodes.filter((n) => (n.degree || 0) >= 8))
       .join('text')
       .text((d: any) => d.id)
-      .attr('font-size', '10px')
+      .attr('font-size', '11px')
       .attr('font-family', 'var(--font-sans)')
-      .attr('fill', 'var(--text-muted)')
+      .attr('font-weight', '500')
+      .attr('fill', '#d4d4d8')
       .attr('dx', 10)
       .attr('dy', 4)
       .attr('pointer-events', 'none')
@@ -176,53 +172,60 @@ export const CollaborationGraph: React.FC<CollaborationGraphProps> = ({
   }, [data])
 
   return (
-    <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+    <div className="panel" style={{ padding: '20px 24px' }}>
+      {/* Top Toolbar */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px',
+          marginBottom: '16px',
+        }}
+      >
         <div>
-          <h2 style={{ fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Network size={20} color="var(--primary)" />
+          <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>
             Developer Collaboration Network
-          </h2>
-          <p style={{ color: 'var(--text-dim)', fontSize: '0.825rem' }}>
-            Force-directed graph of shared module co-authorship. Nodes sized by collaboration degree.
-          </p>
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+            Co-authorship topology extracted from multi-author file commits.
+          </div>
         </div>
 
-        {/* Graph Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
-          {/* Min Weight Filter */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-            <Filter size={14} />
-            <span>Min Shared Edits:</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          {/* Threshold Slider */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.775rem', color: 'var(--text-muted)' }}>
+            <Filter size={13} />
+            <span>Shared edit threshold:</span>
             <input
               type="range"
               min="1"
               max="10"
               value={minWeight}
               onChange={(e) => onChangeMinWeight(Number(e.target.value))}
-              style={{ width: '80px', accentColor: 'var(--primary)' }}
+              style={{ width: '70px', accentColor: '#f4f4f5' }}
             />
-            <span className="mono badge badge-indigo">{minWeight}</span>
+            <span className="mono badge badge-neutral">{minWeight}</span>
           </div>
 
-          {/* Node Count Stat */}
-          <span className="badge badge-cyan">
-            {data.nodes.length} Developers • {data.edges.length} Edges
+          <span className="badge badge-neutral">
+            {data.nodes.length} nodes • {data.edges.length} edges
           </span>
         </div>
       </div>
 
-      {/* Graph Canvas Container */}
+      {/* Canvas */}
       <div
         ref={containerRef}
         style={{
           position: 'relative',
           width: '100%',
-          height: '540px',
-          background: 'radial-gradient(circle at center, rgba(30, 41, 59, 0.4) 0%, rgba(10, 15, 29, 0.8) 100%)',
-          borderRadius: 'var(--radius-md)',
-          overflow: 'hidden',
+          height: '520px',
+          background: '#0d0d0f',
+          borderRadius: 'var(--radius-sm)',
           border: '1px solid var(--border-subtle)',
+          overflow: 'hidden',
         }}
       >
         {isLoading && (
@@ -233,15 +236,13 @@ export const CollaborationGraph: React.FC<CollaborationGraphProps> = ({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              background: 'rgba(10, 15, 29, 0.7)',
+              background: 'rgba(9, 9, 11, 0.7)',
               zIndex: 10,
-              color: 'var(--primary-light)',
+              color: 'var(--text-muted)',
+              fontSize: '0.85rem',
             }}
           >
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-              <Network size={32} style={{ animation: 'spin 1.5s linear infinite' }} />
-              <span style={{ fontSize: '0.875rem' }}>Rendering collaboration topology…</span>
-            </div>
+            Calculating topology…
           </div>
         )}
 
@@ -252,53 +253,53 @@ export const CollaborationGraph: React.FC<CollaborationGraphProps> = ({
           <div
             style={{
               position: 'absolute',
-              left: `${hoveredNode.x + 12}px`,
-              top: `${hoveredNode.y - 12}px`,
-              background: 'rgba(15, 23, 42, 0.95)',
-              border: '1px solid rgba(99, 102, 241, 0.4)',
-              borderRadius: 'var(--radius-sm)',
-              padding: '6px 12px',
-              fontSize: '0.8rem',
+              left: `${hoveredNode.x + 10}px`,
+              top: `${hoveredNode.y - 10}px`,
+              background: '#18181b',
+              border: '1px solid var(--border-primary)',
+              borderRadius: 'var(--radius-xs)',
+              padding: '6px 10px',
+              fontSize: '0.775rem',
               pointerEvents: 'none',
               zIndex: 20,
-              boxShadow: 'var(--shadow-md)',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
             }}
           >
-            <div style={{ fontWeight: 600, color: 'white' }}>{hoveredNode.id}</div>
-            <div style={{ color: 'var(--text-dim)', fontSize: '0.725rem' }}>
-              Shared module co-edits with {hoveredNode.degree} developer(s)
+            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{hoveredNode.id}</div>
+            <div style={{ color: 'var(--text-dim)', fontSize: '0.7rem' }}>
+              Connected to {hoveredNode.degree} collaborator(s)
             </div>
           </div>
         )}
 
-        {/* Graph Legend */}
+        {/* Minimal Legend */}
         <div
           style={{
             position: 'absolute',
-            bottom: '12px',
+            bottom: '10px',
             left: '12px',
-            background: 'rgba(15, 23, 42, 0.85)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: 'var(--radius-sm)',
-            padding: '8px 12px',
-            fontSize: '0.75rem',
             display: 'flex',
             alignItems: 'center',
             gap: '12px',
-            backdropFilter: 'blur(8px)',
+            fontSize: '0.725rem',
+            color: 'var(--text-muted)',
+            background: 'rgba(13, 13, 15, 0.9)',
+            padding: '4px 10px',
+            borderRadius: 'var(--radius-xs)',
+            border: '1px solid var(--border-subtle)',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ec4899' }} />
-            <span style={{ color: 'var(--text-muted)' }}>Core Maintainer</span>
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f4f4f5' }} />
+            <span>Core Maintainer</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#6366f1' }} />
-            <span style={{ color: 'var(--text-muted)' }}>Regular</span>
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#a1a1aa' }} />
+            <span>Regular</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#06b6d4' }} />
-            <span style={{ color: 'var(--text-muted)' }}>Casual</span>
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#3f3f46' }} />
+            <span>Casual</span>
           </div>
         </div>
       </div>

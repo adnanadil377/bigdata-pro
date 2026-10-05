@@ -1,6 +1,5 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useState } from 'react';
-import { Activity, GitCommit, GitFork, GitPullRequest, Radio, Star, } from 'lucide-react';
 import { subscribeToRealtimeEvents } from '../services/api';
 export const LiveEventStream = ({ repoName }) => {
     const [events, setEvents] = useState([]);
@@ -14,7 +13,7 @@ export const LiveEventStream = ({ repoName }) => {
             unsubscribe();
         };
     }, [repoName]);
-    // Fallback realistic simulated ticker if SSE stream has 0 events initially
+    // Fallback simulated ticker if SSE stream has 0 events initially
     useEffect(() => {
         const timer = setTimeout(() => {
             if (events.length === 0) {
@@ -25,7 +24,7 @@ export const LiveEventStream = ({ repoName }) => {
                         event_type: 'PushEvent',
                         repo_full_name: repoName || 'expressjs/express',
                         actor_login: 'wesleytodd',
-                        received_at: new Date(Date.now() - 1000 * 30).toISOString(),
+                        received_at: new Date(Date.now() - 1000 * 25).toISOString(),
                         payload: { commits: 1, message: 'perf: optimize router layer dispatch latency' },
                     },
                     {
@@ -33,7 +32,7 @@ export const LiveEventStream = ({ repoName }) => {
                         event_type: 'PullRequestEvent',
                         repo_full_name: repoName || 'expressjs/express',
                         actor_login: 'UlisesGascon',
-                        received_at: new Date(Date.now() - 1000 * 120).toISOString(),
+                        received_at: new Date(Date.now() - 1000 * 90).toISOString(),
                         payload: { action: 'opened', title: 'feat: add support for modern HTTP/2 trailer streaming' },
                     },
                     {
@@ -41,7 +40,7 @@ export const LiveEventStream = ({ repoName }) => {
                         event_type: 'IssueCommentEvent',
                         repo_full_name: repoName || 'expressjs/express',
                         actor_login: 'jonathanong',
-                        received_at: new Date(Date.now() - 1000 * 300).toISOString(),
+                        received_at: new Date(Date.now() - 1000 * 180).toISOString(),
                         payload: { action: 'created', comment: 'LGTM! Benchmarks show 8% memory footprint reduction.' },
                     },
                     {
@@ -49,19 +48,18 @@ export const LiveEventStream = ({ repoName }) => {
                         event_type: 'WatchEvent',
                         repo_full_name: repoName || 'pallets/click',
                         actor_login: 'davidism',
-                        received_at: new Date(Date.now() - 1000 * 500).toISOString(),
+                        received_at: new Date(Date.now() - 1000 * 360).toISOString(),
                         payload: { action: 'started' },
                     },
                 ];
                 setEvents(mockEvents);
             }
-        }, 1500);
-        // Periodic simulation pulse every 12 seconds to keep stream alive
+        }, 1200);
         const interval = setInterval(() => {
             setEvents((prev) => {
                 if (prev.length === 0)
                     return prev;
-                const sampleActors = ['wesleytodd', 'UlisesGascon', 'dougwilson', 'mweststrate', 'torvalds'];
+                const sampleActors = ['wesleytodd', 'UlisesGascon', 'dougwilson', 'mweststrate', 'torvalds', 'mitsuhiko'];
                 const sampleTypes = ['PushEvent', 'PullRequestEvent', 'WatchEvent', 'IssuesEvent'];
                 const pickedActor = sampleActors[Math.floor(Math.random() * sampleActors.length)];
                 const pickedType = sampleTypes[Math.floor(Math.random() * sampleTypes.length)];
@@ -71,55 +69,62 @@ export const LiveEventStream = ({ repoName }) => {
                     repo_full_name: repoName || 'expressjs/express',
                     actor_login: pickedActor,
                     received_at: new Date().toISOString(),
-                    payload: { action: 'activity', note: 'Streamed via Kafka topic github.events.raw' },
+                    payload: { action: 'stream_pulse', message: 'Committed revision to repository head' },
                 };
                 return [simulatedEvent, ...prev.slice(0, 49)];
             });
-        }, 12000);
+        }, 10000);
         return () => {
             clearTimeout(timer);
             clearInterval(interval);
         };
     }, [repoName]);
-    const getEventIcon = (type) => {
-        switch (type) {
-            case 'PushEvent':
-                return _jsx(GitCommit, { size: 15, color: "var(--emerald)" });
-            case 'PullRequestEvent':
-                return _jsx(GitPullRequest, { size: 15, color: "var(--violet)" });
-            case 'WatchEvent':
-                return _jsx(Star, { size: 15, color: "var(--amber)" });
-            case 'ForkEvent':
-                return _jsx(GitFork, { size: 15, color: "var(--cyan)" });
-            default:
-                return _jsx(Activity, { size: 15, color: "var(--primary)" });
-        }
-    };
     const formatTimestamp = (iso) => {
         try {
             const d = new Date(iso);
-            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            return d.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
         }
         catch {
             return iso;
         }
     };
-    return (_jsxs("div", { className: "glass-panel", style: { padding: '24px' }, children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }, children: [_jsxs("div", { children: [_jsxs("h2", { style: { fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '8px' }, children: [_jsx(Radio, { size: 20, color: "var(--rose)" }), "Real-Time GitHub Activity Telemetry"] }), _jsxs("p", { style: { color: 'var(--text-dim)', fontSize: '0.825rem' }, children: ["Live SSE stream bridging Kafka topic ", _jsx("code", { className: "mono", children: "github.events.raw" }), " into the Lakehouse."] })] }), _jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '10px' }, children: [isSimulated && (_jsx("span", { className: "badge badge-amber", title: "Kafka producer idle: displaying simulated stream", children: "Simulation Active" })), _jsxs("span", { className: "badge badge-emerald", children: [_jsx("span", { className: "pulse-dot" }), "Live SSE Feed"] })] })] }), _jsx("div", { style: { display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '480px', overflowY: 'auto' }, children: events.map((evt) => (_jsxs("div", { style: {
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '12px 16px',
-                        background: 'rgba(255, 255, 255, 0.02)',
-                        border: '1px solid var(--border-subtle)',
-                        borderRadius: 'var(--radius-md)',
-                        transition: 'all 0.2s',
-                    }, children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '14px' }, children: [_jsx("div", { style: {
-                                        width: '32px',
-                                        height: '32px',
-                                        borderRadius: '8px',
-                                        background: 'rgba(255, 255, 255, 0.05)',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                    }, children: getEventIcon(evt.event_type) }), _jsxs("div", { children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '8px' }, children: [_jsx("span", { style: { fontWeight: 600, color: 'white', fontSize: '0.875rem' }, children: evt.actor_login }), _jsx("span", { className: "badge badge-indigo", style: { fontSize: '0.7rem' }, children: evt.event_type }), _jsx("span", { className: "mono", style: { fontSize: '0.725rem', color: 'var(--text-dim)' }, children: evt.repo_full_name })] }), evt.payload?.message && (_jsxs("div", { style: { fontSize: '0.775rem', color: 'var(--text-muted)', marginTop: '2px' }, children: ["\"", evt.payload.message, "\""] })), evt.payload?.title && (_jsxs("div", { style: { fontSize: '0.775rem', color: 'var(--text-muted)', marginTop: '2px' }, children: ["PR: ", evt.payload.title] }))] })] }), _jsx("div", { className: "mono", style: { fontSize: '0.75rem', color: 'var(--text-dim)' }, children: formatTimestamp(evt.received_at) })] }, evt.id))) })] }));
+    const getBadgeClass = (type) => {
+        switch (type) {
+            case 'PushEvent':
+                return 'badge-emerald';
+            case 'PullRequestEvent':
+                return 'badge-blue';
+            case 'WatchEvent':
+                return 'badge-amber';
+            default:
+                return 'badge-neutral';
+        }
+    };
+    return (_jsxs("div", { className: "panel", style: { padding: '20px 24px' }, children: [_jsxs("div", { style: {
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: '16px',
+                }, children: [_jsxs("div", { children: [_jsx("div", { style: { fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }, children: "Real-Time Ingestion Stream (SSE)" }), _jsxs("div", { style: { fontSize: '0.75rem', color: 'var(--text-muted)' }, children: ["Consuming from Kafka topic ", _jsx("code", { className: "mono", children: "github.events.raw" }), "."] })] }), _jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '8px' }, children: [isSimulated && (_jsx("span", { className: "badge badge-neutral", style: { fontSize: '0.7rem' }, children: "Kafka idle \u2022 Simulation active" })), _jsxs("div", { style: {
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '3px 8px',
+                                    borderRadius: 'var(--radius-xs)',
+                                    background: '#0d0d0f',
+                                    border: '1px solid var(--border-subtle)',
+                                    fontSize: '0.725rem',
+                                    color: 'var(--status-emerald)',
+                                }, children: [_jsx("span", { className: "pulse-dot" }), _jsx("span", { className: "mono", children: "stream.connected" })] })] })] }), _jsx("div", { style: {
+                    background: '#09090b',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border-subtle)',
+                    maxHeight: '440px',
+                    overflowY: 'auto',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: '0.775rem',
+                }, children: _jsx("table", { style: { width: '100%', borderCollapse: 'collapse' }, children: _jsx("tbody", { children: events.map((evt) => (_jsxs("tr", { style: {
+                                borderBottom: '1px solid #141417',
+                                transition: 'background 0.1s ease',
+                            }, children: [_jsx("td", { style: { padding: '8px 12px', width: '80px', color: 'var(--text-dim)', whiteSpace: 'nowrap' }, children: formatTimestamp(evt.received_at) }), _jsx("td", { style: { padding: '8px 8px', width: '120px' }, children: _jsx("span", { className: `badge ${getBadgeClass(evt.event_type)}`, style: { fontSize: '0.675rem' }, children: evt.event_type.replace('Event', '') }) }), _jsxs("td", { style: { padding: '8px 12px', width: '140px', color: 'var(--text-primary)', fontWeight: 500 }, children: ["@", evt.actor_login] }), _jsx("td", { style: { padding: '8px 12px', width: '160px', color: 'var(--text-muted)' }, children: evt.repo_full_name }), _jsx("td", { style: { padding: '8px 12px', color: 'var(--text-dim)' }, children: evt.payload?.message || evt.payload?.title || evt.payload?.action || '—' })] }, evt.id))) }) }) })] }));
 };

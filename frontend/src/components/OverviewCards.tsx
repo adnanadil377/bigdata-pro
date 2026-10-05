@@ -1,14 +1,5 @@
 import React from 'react'
-import {
-  Code,
-  FileCode2,
-  GitCommit,
-  GitFork,
-  MinusCircle,
-  PlusCircle,
-  Users,
-} from 'lucide-react'
-import { RepoOverview } from '../types'
+import type { RepoOverview } from '../types'
 
 interface OverviewCardsProps {
   overview: RepoOverview
@@ -32,96 +23,98 @@ export const OverviewCards: React.FC<OverviewCardsProps> = ({ overview }) => {
   const timespan =
     metrics.first_commit_period && metrics.last_commit_period
       ? `${formatDate(metrics.first_commit_period)} — ${formatDate(metrics.last_commit_period)}`
-      : 'All history'
+      : 'Complete history'
 
   return (
-    <section className="metrics-grid" aria-label="Repository Metrics">
-      {/* Total Commits */}
-      <div className="glass-panel metric-card" style={{ '--card-accent': 'var(--primary)' } as React.CSSProperties}>
-        <div className="metric-header">
-          <span>Total Commits</span>
-          <GitCommit size={16} color="var(--primary-light)" />
+    <div
+      className="panel"
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+        border: '1px solid var(--border-subtle)',
+        overflow: 'hidden',
+      }}
+    >
+      {/* 1. Total Commits */}
+      <div style={{ padding: '16px 20px', borderRight: '1px solid var(--border-subtle)' }}>
+        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          Total Commits
         </div>
-        <div className="metric-value mono">
+        <div className="tabular" style={{ fontSize: '1.65rem', fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.2 }}>
           {(metrics.total_commits || 0).toLocaleString()}
         </div>
-        <div className="metric-subtext">
-          <span>Time span: {timespan}</span>
+        <div style={{ fontSize: '0.725rem', color: 'var(--text-dim)', marginTop: '4px' }}>
+          {timespan}
         </div>
       </div>
 
-      {/* Unique Contributors */}
-      <div className="glass-panel metric-card" style={{ '--card-accent': 'var(--cyan)' } as React.CSSProperties}>
-        <div className="metric-header">
-          <span>Contributors</span>
-          <Users size={16} color="var(--cyan)" />
+      {/* 2. Contributors */}
+      <div style={{ padding: '16px 20px', borderRight: '1px solid var(--border-subtle)' }}>
+        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          Contributors
         </div>
-        <div className="metric-value mono">
+        <div className="tabular" style={{ fontSize: '1.65rem', fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.2 }}>
           {(metrics.total_contributors || 0).toLocaleString()}
         </div>
-        <div className="metric-subtext">
-          <span>Active in lakehouse history</span>
+        <div style={{ fontSize: '0.725rem', color: 'var(--text-dim)', marginTop: '4px' }}>
+          Tracked in lakehouse graph
         </div>
       </div>
 
-      {/* Insertions */}
-      <div className="glass-panel metric-card" style={{ '--card-accent': 'var(--emerald)' } as React.CSSProperties}>
-        <div className="metric-header">
-          <span>Lines Inserted</span>
-          <PlusCircle size={16} color="var(--emerald)" />
+      {/* 3. Code Lines Inserted */}
+      <div style={{ padding: '16px 20px', borderRight: '1px solid var(--border-subtle)' }}>
+        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          Insertions
         </div>
-        <div className="metric-value mono" style={{ color: 'var(--emerald)' }}>
+        <div className="tabular" style={{ fontSize: '1.65rem', fontWeight: 600, color: 'var(--status-emerald)', lineHeight: 1.2 }}>
           +{(metrics.total_insertions || 0).toLocaleString()}
         </div>
-        <div className="metric-subtext">
-          <span>Code volume added</span>
+        <div style={{ fontSize: '0.725rem', color: 'var(--text-dim)', marginTop: '4px' }}>
+          Gross lines added
         </div>
       </div>
 
-      {/* Deletions */}
-      <div className="glass-panel metric-card" style={{ '--card-accent': 'var(--rose)' } as React.CSSProperties}>
-        <div className="metric-header">
-          <span>Lines Deleted</span>
-          <MinusCircle size={16} color="var(--rose)" />
+      {/* 4. Code Lines Deleted */}
+      <div style={{ padding: '16px 20px', borderRight: '1px solid var(--border-subtle)' }}>
+        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          Deletions
         </div>
-        <div className="metric-value mono" style={{ color: 'var(--rose)' }}>
+        <div className="tabular" style={{ fontSize: '1.65rem', fontWeight: 600, color: 'var(--status-rose)', lineHeight: 1.2 }}>
           -{(metrics.total_deletions || 0).toLocaleString()}
         </div>
-        <div className="metric-subtext">
-          <span>Refactored & pruned code</span>
+        <div style={{ fontSize: '0.725rem', color: 'var(--text-dim)', marginTop: '4px' }}>
+          Pruned & refactored
         </div>
       </div>
 
-      {/* Files Modified */}
-      <div className="glass-panel metric-card" style={{ '--card-accent': 'var(--amber)' } as React.CSSProperties}>
-        <div className="metric-header">
-          <span>Files Changed</span>
-          <FileCode2 size={16} color="var(--amber)" />
+      {/* 5. Files Changed */}
+      <div style={{ padding: '16px 20px', borderRight: '1px solid var(--border-subtle)' }}>
+        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          Files Modified
         </div>
-        <div className="metric-value mono">
+        <div className="tabular" style={{ fontSize: '1.65rem', fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.2 }}>
           {(metrics.total_files_changed || 0).toLocaleString()}
         </div>
-        <div className="metric-subtext">
-          <span>Across all revisions</span>
+        <div style={{ fontSize: '0.725rem', color: 'var(--text-dim)', marginTop: '4px' }}>
+          Distinct file revisions
         </div>
       </div>
 
-      {/* Language & Branch */}
-      <div className="glass-panel metric-card" style={{ '--card-accent': 'var(--violet)' } as React.CSSProperties}>
-        <div className="metric-header">
-          <span>Language / Branch</span>
-          <Code size={16} color="var(--violet)" />
+      {/* 6. Language & Branch */}
+      <div style={{ padding: '16px 20px' }}>
+        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          Language / Branch
         </div>
-        <div className="metric-value" style={{ fontSize: '1.4rem' }}>
-          {repository.language || 'Multi-language'}
+        <div style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.2, marginTop: '2px' }}>
+          {repository.language || 'Multi-stack'}
         </div>
-        <div className="metric-subtext mono">
-          <span>Branch: <strong>{repository.default_branch}</strong></span>
+        <div className="mono" style={{ fontSize: '0.725rem', color: 'var(--text-dim)', marginTop: '6px' }}>
+          branch: <span style={{ color: 'var(--text-secondary)' }}>{repository.default_branch}</span>
           {repository.head_commit_hash && (
-            <span>• {repository.head_commit_hash.substring(0, 7)}</span>
+            <span> • {repository.head_commit_hash.substring(0, 7)}</span>
           )}
         </div>
       </div>
-    </section>
+    </div>
   )
 }

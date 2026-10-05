@@ -1,22 +1,25 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
-import { AlertCircle, AlertTriangle, CheckCircle2, ShieldAlert, UserCheck } from 'lucide-react';
+import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 export const BusFactorRiskTable = ({ modules }) => {
-    return (_jsxs("div", { className: "glass-panel", style: { padding: '24px' }, children: [_jsxs("div", { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }, children: [_jsxs("div", { children: [_jsxs("h2", { style: { fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '8px' }, children: [_jsx(ShieldAlert, { size: 20, color: "var(--rose)" }), "Module Bus-Factor & Knowledge Silo Telemetry"] }), _jsx("p", { style: { color: 'var(--text-dim)', fontSize: '0.825rem' }, children: "Calculates minimum contributors required to exceed 50% commit ownership per directory or module." })] }), _jsxs("div", { className: "badge badge-amber", style: { padding: '6px 12px' }, children: [_jsx(AlertTriangle, { size: 14 }), _jsxs("span", { children: [modules.filter((m) => m.bus_factor === 1).length, " Modules at Critical Single-Maintainer Risk"] })] })] }), _jsx("div", { style: { overflowX: 'auto' }, children: _jsxs("table", { className: "data-table", children: [_jsx("thead", { children: _jsxs("tr", { children: [_jsx("th", { children: "Module / Subsystem Path" }), _jsx("th", { children: "Bus Factor" }), _jsx("th", { children: "Primary Code Owner" }), _jsx("th", { children: "Ownership Concentration" }), _jsx("th", { children: "Risk Severity" })] }) }), _jsx("tbody", { children: modules.map((m, idx) => {
-                                const isCritical = m.bus_factor === 1;
+    const criticalCount = modules.filter((m) => m.bus_factor === 1).length;
+    return (_jsxs("div", { className: "panel", style: { padding: '20px 24px' }, children: [_jsxs("div", { style: {
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: '16px',
+                }, children: [_jsxs("div", { children: [_jsx("div", { style: { fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }, children: "Module-Level Bus Factor & Knowledge Concentration" }), _jsx("div", { style: { fontSize: '0.75rem', color: 'var(--text-muted)' }, children: "Identifies codebases and subsystems dependent on a single primary author." })] }), criticalCount > 0 && (_jsxs("span", { className: "badge badge-amber", children: [_jsx(AlertTriangle, { size: 12 }), _jsxs("span", { children: [criticalCount, " modules with solo maintainer"] })] }))] }), _jsx("div", { style: { overflowX: 'auto' }, children: _jsxs("table", { className: "data-table", children: [_jsx("thead", { children: _jsxs("tr", { children: [_jsx("th", { children: "Subsystem / Module Path" }), _jsx("th", { children: "Bus Factor" }), _jsx("th", { children: "Primary Code Owner" }), _jsx("th", { children: "Ownership Concentration" }), _jsx("th", { children: "Status" })] }) }), _jsx("tbody", { children: modules.map((m, idx) => {
+                                const isSolo = m.bus_factor === 1;
                                 const ownershipPct = Math.round((m.top_owner_pct || 0) * 100);
-                                return (_jsxs("tr", { children: [_jsx("td", { children: _jsx("span", { className: "mono", style: { fontWeight: 600, color: 'var(--text-main)' }, children: m.module_path }) }), _jsx("td", { children: _jsxs("span", { className: `badge ${isCritical ? 'badge-rose' : 'badge-emerald'}`, style: { fontSize: '0.8rem' }, children: ["BF = ", m.bus_factor, " ", isCritical ? '(Solo)' : 'Devs'] }) }), _jsx("td", { children: _jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '6px' }, children: [_jsx(UserCheck, { size: 14, color: "var(--primary-light)" }), _jsx("span", { children: m.top_owner || 'Unknown' })] }) }), _jsx("td", { style: { minWidth: '180px' }, children: _jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '10px' }, children: [_jsx("div", { style: {
+                                return (_jsxs("tr", { children: [_jsx("td", { children: _jsx("span", { className: "mono", style: { color: 'var(--text-primary)', fontWeight: 500 }, children: m.module_path }) }), _jsx("td", { children: _jsxs("span", { className: `badge ${isSolo ? 'badge-rose' : 'badge-neutral'}`, children: [m.bus_factor, " ", isSolo ? 'dev (solo)' : 'devs'] }) }), _jsx("td", { children: _jsx("span", { style: { color: 'var(--text-primary)' }, children: m.top_owner || 'Unknown' }) }), _jsx("td", { style: { minWidth: '160px' }, children: _jsxs("div", { style: { display: 'flex', alignItems: 'center', gap: '8px' }, children: [_jsx("div", { style: {
                                                             flex: 1,
-                                                            height: '6px',
-                                                            background: 'rgba(255, 255, 255, 0.08)',
-                                                            borderRadius: '3px',
+                                                            height: '4px',
+                                                            background: '#222226',
+                                                            borderRadius: '2px',
                                                             overflow: 'hidden',
                                                         }, children: _jsx("div", { style: {
                                                                 height: '100%',
                                                                 width: `${ownershipPct}%`,
-                                                                background: isCritical
-                                                                    ? 'linear-gradient(90deg, #f59e0b, #f43f5e)'
-                                                                    : 'linear-gradient(90deg, #6366f1, #10b981)',
-                                                                borderRadius: '3px',
-                                                            } }) }), _jsxs("span", { className: "mono", style: { fontSize: '0.775rem', width: '36px', textAlign: 'right' }, children: [ownershipPct, "%"] })] }) }), _jsx("td", { children: isCritical ? (_jsxs("span", { className: "badge badge-rose", style: { fontSize: '0.725rem' }, children: [_jsx(AlertCircle, { size: 12 }), " High Risk"] })) : (_jsxs("span", { className: "badge badge-emerald", style: { fontSize: '0.725rem' }, children: [_jsx(CheckCircle2, { size: 12 }), " Distributed"] })) })] }, `${m.module_path}-${idx}`));
+                                                                background: isSolo ? 'var(--status-rose)' : 'var(--text-secondary)',
+                                                            } }) }), _jsxs("span", { className: "mono", style: { fontSize: '0.75rem', width: '32px', textAlign: 'right' }, children: [ownershipPct, "%"] })] }) }), _jsx("td", { children: isSolo ? (_jsx("span", { style: { fontSize: '0.75rem', color: 'var(--status-rose)', display: 'flex', alignItems: 'center', gap: '4px' }, children: "Single point of failure" })) : (_jsxs("span", { style: { fontSize: '0.75rem', color: 'var(--status-emerald)', display: 'flex', alignItems: 'center', gap: '4px' }, children: [_jsx(CheckCircle2, { size: 12 }), " Distributed"] })) })] }, `${m.module_path}-${idx}`));
                             }) })] }) })] }));
 };

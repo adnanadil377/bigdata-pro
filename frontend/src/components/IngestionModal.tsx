@@ -1,16 +1,7 @@
 import React, { useEffect, useState } from 'react'
-import {
-  AlertCircle,
-  CheckCircle2,
-  Database,
-  ExternalLink,
-  GitBranch,
-  Key,
-  Loader2,
-  X,
-} from 'lucide-react'
+import { AlertCircle, CheckCircle2, Loader2, X } from 'lucide-react'
 import { fetchJobStatus, triggerIngestion } from '../services/api'
-import { IngestionJob } from '../types'
+import type { IngestionJob } from '../types'
 
 interface IngestionModalProps {
   isOpen: boolean
@@ -30,7 +21,6 @@ export const IngestionModal: React.FC<IngestionModalProps> = ({
   const [activeJob, setActiveJob] = useState<IngestionJob | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  // Reset state on modal open/close
   useEffect(() => {
     if (!isOpen) {
       setRepoUrl('')
@@ -42,7 +32,6 @@ export const IngestionModal: React.FC<IngestionModalProps> = ({
     }
   }, [isOpen])
 
-  // Poll job status if a job is in flight
   useEffect(() => {
     if (!activeJob || activeJob.status === 'completed' || activeJob.status === 'failed') {
       return
@@ -57,9 +46,9 @@ export const IngestionModal: React.FC<IngestionModalProps> = ({
           setTimeout(() => {
             onIngestionSuccess(updated.repo_owner, updated.repo_name)
             onClose()
-          }, 1200)
+          }, 1000)
         } else if (updated.status === 'failed') {
-          setErrorMessage(updated.error_message || 'Ingestion failed on worker')
+          setErrorMessage(updated.error_message || 'Ingestion failed on container worker')
         }
       } catch (err: any) {
         console.error('Failed to poll job status', err)
@@ -85,7 +74,6 @@ export const IngestionModal: React.FC<IngestionModalProps> = ({
         access_token: token.trim() || undefined,
       })
 
-      // Set initial job state
       setActiveJob({
         id: res.job_id,
         repo_url: repoUrl,
@@ -94,7 +82,7 @@ export const IngestionModal: React.FC<IngestionModalProps> = ({
         branch: branch || 'main',
         status: 'queued',
         progress_pct: 10,
-        current_step: 'Submitting to Lakehouse pipeline…',
+        current_step: 'Submitting to blobless clone pipeline…',
         total_commits: 0,
         error_message: null,
         created_at: new Date().toISOString(),
@@ -106,40 +94,27 @@ export const IngestionModal: React.FC<IngestionModalProps> = ({
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        {/* Modal Header */}
+    <div className="modal-backdrop" onClick={onClose} role="dialog" aria-modal="true">
+      <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            padding: '20px 24px',
+            padding: '16px 20px',
             borderBottom: '1px solid var(--border-subtle)',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div
-              style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '8px',
-                background: 'rgba(99, 102, 241, 0.2)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--primary-light)',
-              }}
-            >
-              <Database size={18} />
+          <div>
+            <div style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+              Ingest Repository
             </div>
-            <div>
-              <h2 style={{ fontSize: '1.15rem' }}>Ingest GitHub Repository</h2>
-              <p style={{ color: 'var(--text-dim)', fontSize: '0.775rem' }}>
-                Zero depth limits • Blobless clone • MinIO Parquet & PostgreSQL
-              </p>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              Blobless clone extraction into MinIO Parquet & PostgreSQL.
             </div>
           </div>
+
           <button
             onClick={onClose}
             style={{
@@ -150,89 +125,85 @@ export const IngestionModal: React.FC<IngestionModalProps> = ({
               padding: '4px',
             }}
           >
-            <X size={18} />
+            <X size={16} />
           </button>
         </div>
 
-        {/* Modal Body */}
-        <div style={{ padding: '24px' }}>
+        {/* Content */}
+        <div style={{ padding: '20px' }}>
           {errorMessage && (
             <div
               style={{
-                padding: '12px 14px',
-                borderRadius: 'var(--radius-md)',
-                background: 'rgba(244, 63, 94, 0.15)',
-                border: '1px solid rgba(244, 63, 94, 0.3)',
-                color: '#fda4af',
-                fontSize: '0.825rem',
+                padding: '10px 12px',
+                borderRadius: 'var(--radius-xs)',
+                background: 'var(--status-rose-bg)',
+                border: '1px solid rgba(239, 68, 68, 0.25)',
+                color: 'var(--status-rose)',
+                fontSize: '0.8rem',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
-                marginBottom: '16px',
+                marginBottom: '14px',
               }}
             >
-              <AlertCircle size={16} />
+              <AlertCircle size={15} />
               <span>{errorMessage}</span>
             </div>
           )}
 
           {activeJob ? (
-            /* Progress Tracking View */
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '12px 0' }}>
+            /* Progress Stepper */
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', padding: '6px 0' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontWeight: 600, color: 'white' }}>
+                <span className="mono" style={{ fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.85rem' }}>
                   {activeJob.repo_owner}/{activeJob.repo_name}
                 </span>
-                <span className={`badge ${activeJob.status === 'completed' ? 'badge-emerald' : activeJob.status === 'failed' ? 'badge-rose' : 'badge-indigo'}`}>
-                  {activeJob.status.toUpperCase()}
-                </span>
+                <span className="badge badge-neutral">{activeJob.status.toUpperCase()}</span>
               </div>
 
-              {/* Progress Bar */}
-              <div style={{ height: '8px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '4px', overflow: 'hidden' }}>
+              {/* Minimal Progress Bar */}
+              <div style={{ height: '4px', background: '#222226', borderRadius: '2px', overflow: 'hidden' }}>
                 <div
                   style={{
                     height: '100%',
                     width: `${activeJob.progress_pct}%`,
-                    background: activeJob.status === 'failed' ? 'var(--rose)' : 'linear-gradient(90deg, #6366f1, #06b6d4)',
-                    borderRadius: '4px',
-                    transition: 'width 0.4s ease',
+                    background: activeJob.status === 'failed' ? 'var(--status-rose)' : 'var(--text-primary)',
+                    transition: 'width 0.3s ease',
                   }}
                 />
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                 <span>{activeJob.current_step}</span>
-                <span className="mono">{activeJob.progress_pct}%</span>
+                <span className="mono tabular">{activeJob.progress_pct}%</span>
               </div>
 
               {activeJob.total_commits > 0 && (
-                <div style={{ fontSize: '0.775rem', color: 'var(--emerald)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <CheckCircle2 size={14} />
-                  <span>{activeJob.total_commits.toLocaleString()} commits extracted</span>
+                <div style={{ fontSize: '0.75rem', color: 'var(--status-emerald)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <CheckCircle2 size={13} />
+                  <span className="mono tabular">{activeJob.total_commits.toLocaleString()} commits extracted</span>
                 </div>
               )}
 
               {activeJob.status !== 'completed' && activeJob.status !== 'failed' && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-dim)', fontSize: '0.75rem', marginTop: '8px' }}>
-                  <Loader2 size={14} className="animate-spin" style={{ animation: 'spin 1s linear infinite' }} />
-                  <span>Pipeline running in container backend…</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-dim)', fontSize: '0.725rem' }}>
+                  <Loader2 size={12} className="animate-spin" style={{ animation: 'spin 1s linear infinite' }} />
+                  <span>Processing in background…</span>
                 </div>
               )}
             </div>
           ) : (
-            /* Ingestion Form */
-            <form onSubmit={handleSubmit}>
-              <div className="form-group">
-                <label className="form-label" htmlFor="repo-url-input">
-                  <span>GitHub Repository URL or Shorthand *</span>
-                  <span style={{ fontSize: '0.725rem', color: 'var(--text-dim)' }}>e.g. facebook/react</span>
+            /* Form */
+            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '5px' }}>
+                  GitHub Repository URL or Shorthand *
                 </label>
                 <input
                   id="repo-url-input"
                   type="text"
                   required
-                  placeholder="https://github.com/owner/repository"
+                  placeholder="e.g. facebook/react or https://github.com/..."
                   className="form-input"
                   value={repoUrl}
                   onChange={(e) => setRepoUrl(e.target.value)}
@@ -240,65 +211,45 @@ export const IngestionModal: React.FC<IngestionModalProps> = ({
                 />
               </div>
 
-              <div className="form-group">
-                <label className="form-label" htmlFor="branch-input">
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <GitBranch size={13} /> Target Branch (Optional)
-                  </span>
-                  <span style={{ fontSize: '0.725rem', color: 'var(--text-dim)' }}>Defaults to remote default</span>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '5px' }}>
+                  Target Branch (Optional)
                 </label>
                 <input
                   id="branch-input"
                   type="text"
-                  placeholder="main, master, or release branch"
+                  placeholder="Defaults to remote default (e.g. main / master)"
                   className="form-input"
                   value={branch}
                   onChange={(e) => setBranch(e.target.value)}
                 />
               </div>
 
-              <div className="form-group">
-                <label className="form-label" htmlFor="token-input">
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Key size={13} /> Personal Access Token (Optional)
-                  </span>
-                  <span style={{ fontSize: '0.725rem', color: 'var(--text-dim)' }}>For private repositories</span>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '5px' }}>
+                  GitHub Access Token (Optional)
                 </label>
                 <input
                   id="token-input"
                   type="password"
-                  placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+                  placeholder="ghp_xxxxxxxxxxxx (for private repositories)"
                   className="form-input"
                   value={token}
                   onChange={(e) => setToken(e.target.value)}
                 />
               </div>
 
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'flex-end',
-                  gap: '12px',
-                  marginTop: '24px',
-                }}
-              >
-                <button type="button" className="btn btn-secondary" onClick={onClose} disabled={isSubmitting}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={onClose} disabled={isSubmitting}>
                   Cancel
                 </button>
                 <button
                   id="submit-ingest-btn"
                   type="submit"
-                  className="btn btn-primary"
+                  className="btn btn-primary btn-sm"
                   disabled={isSubmitting || !repoUrl.trim()}
                 >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 size={16} className="animate-spin" style={{ animation: 'spin 1s linear infinite' }} />
-                      <span>Dispatching…</span>
-                    </>
-                  ) : (
-                    <span>Start Lakehouse Ingestion</span>
-                  )}
+                  {isSubmitting ? 'Dispatching…' : 'Start Ingestion'}
                 </button>
               </div>
             </form>
