@@ -5,10 +5,10 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
 
 /**
- * Batch ETL: Raw Parquet (MinIO) → Apache Iceberg lakehouse tables
+ * Batch ETL: Raw Parquet (HDFS) → Apache Iceberg lakehouse tables
  *
  * Reads:
- *   s3a://raw/git_events/repository=* /commits.parquet
+ *   hdfs://namenode:9000/raw/git_events/repository=*/commits.parquet
  *
  * Writes Iceberg tables (catalog: lakehouse):
  *   lakehouse.github.commits           - deduplicated commit records
@@ -21,7 +21,7 @@ import org.apache.spark.sql.types._
  *     --packages org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.4.3 \
  *     --conf spark.sql.catalog.lakehouse=org.apache.iceberg.spark.SparkCatalog \
  *     --conf spark.sql.catalog.lakehouse.type=hadoop \
- *     --conf spark.sql.catalog.lakehouse.warehouse=s3a://warehouse/ \
+ *     --conf spark.sql.catalog.lakehouse.warehouse=hdfs://namenode:9000/warehouse/data \
  *     github-analytics-spark-assembly.jar analytics.CommitETL
  */
 object CommitETL {
@@ -55,14 +55,9 @@ object CommitETL {
       .config("spark.sql.catalog.lakehouse",
         "org.apache.iceberg.spark.SparkCatalog")
       .config("spark.sql.catalog.lakehouse.type", "hadoop")
-      .config("spark.sql.catalog.lakehouse.warehouse", "s3a://warehouse/data")
-      // S3A / MinIO settings
-      .config("spark.hadoop.fs.s3a.endpoint",               "http://minio:9000")
-      .config("spark.hadoop.fs.s3a.access.key",             "minioadmin")
-      .config("spark.hadoop.fs.s3a.secret.key",             "minioadmin")
-      .config("spark.hadoop.fs.s3a.path.style.access",      "true")
-      .config("spark.hadoop.fs.s3a.impl",
-        "org.apache.hadoop.fs.s3a.S3AFileSystem")
+      .config("spark.sql.catalog.lakehouse.warehouse", "hdfs://namenode:9000/warehouse/data")
+      // HDFS settings
+      .config("spark.hadoop.fs.defaultFS", "hdfs://namenode:9000")
       .getOrCreate()
 
     import spark.implicits._
@@ -70,7 +65,7 @@ object CommitETL {
     // ── 1. Read raw Parquet ─────────────────────────────────────────────────
     val rawCommits = spark.read
       .option("mergeSchema", "true")
-      .parquet("s3a://raw/git_events/")
+      .parquet("hdfs://namenode:9000/raw/git_events/")
       .withColumn("repository",
         regexp_replace(input_file_name(), ".*/repository=([^/]+)/.*", "$1"))
 

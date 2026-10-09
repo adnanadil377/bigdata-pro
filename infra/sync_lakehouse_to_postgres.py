@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Sync aggregated analytics from MinIO raw / lakehouse Parquet directly into PostgreSQL serving tables:
+Sync aggregated analytics from HDFS raw / lakehouse Parquet directly into PostgreSQL serving tables:
   - repositories
   - contributors
   - commit_stats
@@ -8,36 +8,31 @@ Sync aggregated analytics from MinIO raw / lakehouse Parquet directly into Postg
 """
 import io
 import os
-import boto3
+import hdfs as hdfs_lib
 import pandas as pd
 import psycopg2
 from psycopg2.extras import execute_values
 
-MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
-AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY_ID", "minioadmin")
-AWS_SECRET_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "minioadmin")
+HDFS_NAMENODE_URL = os.getenv("HDFS_NAMENODE_URL", "http://localhost:9870")
+HDFS_USER         = os.getenv("HDFS_USER", "root")
+HDFS_BASE_PATH    = os.getenv("HDFS_BASE_PATH", "/raw")
 POSTGRES_HOST  = os.getenv("POSTGRES_HOST", "localhost")
 POSTGRES_PORT  = int(os.getenv("POSTGRES_PORT", "5432"))
 POSTGRES_DB    = os.getenv("POSTGRES_DB", "github_analytics")
 POSTGRES_USER  = os.getenv("POSTGRES_USER", "analytics")
 POSTGRES_PASS  = os.getenv("POSTGRES_PASSWORD", "analytics")
 
-def get_s3_client():
-    return boto3.client(
-        "s3",
-        endpoint_url=MINIO_ENDPOINT,
-        aws_access_key_id=AWS_ACCESS_KEY,
-        aws_secret_access_key=AWS_SECRET_KEY,
-    )
+def get_hdfs_client() -> hdfs_lib.InsecureClient:
+    return hdfs_lib.InsecureClient(HDFS_NAMENODE_URL, user=HDFS_USER)
 
 def sync_repo(repo_full_name: str):
     owner, name = repo_full_name.split("/")
-    s3 = get_s3_client()
-    key = f"git_events/repository={owner}__{name}/commits.parquet"
+    hdfs_path = f"{HDFS_BASE_PATH}/git_events/repository={owner}__{name}/commits.parquet"
 
-    print(f"\n→ Reading s3://raw/{key} for PostgreSQL serving sync...")
-    resp = s3.get_object(Bucket="raw", Key=key)
-    df = pd.read_parquet(io.BytesIO(resp["Body"].read()))
+    print(f"\n→ Reading hdfs://namenode:9000{hdfs_path} for PostgreSQL serving sync...")
+    client = get_hdfs_client()
+    with client.read(hdfs_path) as reader:
+        df = pd.read_parquet(io.BytesIO(reader.read()))
 
     conn = psycopg2.connect(
         host=POSTGRES_HOST,

@@ -6,7 +6,7 @@ Capabilities:
 2. NO DEPTH LIMIT (extracts complete commit history on main/default branch).
 3. Uses Git Smart Protocol (--filter=blob:none --no-checkout --single-branch) for high-speed blobless ingestion.
 4. Streams and extracts full commit metadata, file modifications, and author statistics.
-5. Saves compressed Parquet to MinIO Lakehouse (s3://raw/git_events/repository=<owner>__<name>/commits.parquet).
+5. Saves compressed Parquet to HDFS Lakehouse (hdfs://namenode:9000/raw/git_events/repository=<owner>__<name>/commits.parquet).
 6. Computes comprehensive analytics:
    - Health Scores (contributor diversity, commit consistency, retention, bus factor safety, overall 0-100)
    - Bus Factor per module / directory
@@ -28,7 +28,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-import boto3
+import hdfs as hdfs_lib
 import pandas as pd
 import psycopg2
 from psycopg2.extras import execute_values
@@ -36,10 +36,9 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 # ── Environment & Config ───────────────────────────────────────────────────
-MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://minio:9000")
-AWS_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", os.getenv("AWS_ACCESS_KEY_ID", "minioadmin"))
-AWS_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", os.getenv("AWS_SECRET_ACCESS_KEY", "minioadmin"))
-OUTPUT_BUCKET  = os.getenv("OUTPUT_BUCKET", "raw")
+HDFS_NAMENODE_URL = os.getenv("HDFS_NAMENODE_URL", "http://namenode:9870")
+HDFS_USER         = os.getenv("HDFS_USER", "root")
+OUTPUT_BASE       = os.getenv("HDFS_BASE_PATH", "/raw")
 
 POSTGRES_HOST  = os.getenv("POSTGRES_HOST", "postgres")
 POSTGRES_PORT  = int(os.getenv("POSTGRES_PORT", "5432"))
@@ -48,13 +47,9 @@ POSTGRES_USER  = os.getenv("POSTGRES_USER", "analytics")
 POSTGRES_PASS  = os.getenv("POSTGRES_PASSWORD", "analytics")
 
 
-def get_s3_client():
-    return boto3.client(
-        "s3",
-        endpoint_url=MINIO_ENDPOINT,
-        aws_access_key_id=AWS_ACCESS_KEY,
-        aws_secret_access_key=AWS_SECRET_KEY,
-    )
+def get_hdfs_client() -> hdfs_lib.InsecureClient:
+    """Return a WebHDFS client pointed at the NameNode."""
+    return hdfs_lib.InsecureClient(HDFS_NAMENODE_URL, user=HDFS_USER)
 
 
 def get_db_connection():
@@ -297,8 +292,8 @@ def detect_dominant_language(file_mods: dict[str, int]) -> str:
     return "Generic"
 
 
-# ── MinIO Parquet Upload ───────────────────────────────────────────────────
-def upload_commits_to_minio(commits: list[dict], owner: str, name: str) -> str:
+# ── HDFS Parquet Upload ────────────────────────────────────────────────────
+def upload_commits_to_hdfs(commits: list[dict], owner: str, name: str) -> str:
     df = pd.DataFrame(commits)
     df["author_date"]    = pd.to_datetime(df["author_date"], utc=True).dt.tz_localize(None).astype("datetime64[us]")
     df["committer_date"] = pd.to_datetime(df["committer_date"], utc=True).dt.tz_localize(None).astype("datetime64[us]")
@@ -311,19 +306,13 @@ def upload_commits_to_minio(commits: list[dict], owner: str, name: str) -> str:
     pq.write_table(table, sink, compression="snappy", coerce_timestamps="us")
     parquet_bytes = sink.getvalue().to_pybytes()
 
-    s3_key = f"git_events/repository={owner}__{name}/commits.parquet"
-    s3 = get_s3_client()
-    # Ensure bucket exists
-    try:
-        s3.head_bucket(Bucket=OUTPUT_BUCKET)
-    except Exception:
-        try:
-            s3.create_bucket(Bucket=OUTPUT_BUCKET)
-        except Exception:
-            pass
-
-    s3.put_object(Bucket=OUTPUT_BUCKET, Key=s3_key, Body=io.BytesIO(parquet_bytes))
-    return s3_key
+    hdfs_path = f"{OUTPUT_BASE}/git_events/repository={owner}__{name}/commits.parquet"
+    client = get_hdfs_client()
+    parent = str(Path(hdfs_path).parent)
+    client.makedirs(parent)
+    with client.write(hdfs_path, overwrite=True) as writer:
+        writer.write(parquet_bytes)
+    return hdfs_path
 
 
 # ── Analytics Calculation & PostgreSQL Sync ─────────────────────────────────
@@ -769,16 +758,16 @@ def run_ingestion_pipeline(
 
             head_commit = commits[0]["hash"]
 
-            # Step 3: Write Parquet to MinIO Lakehouse
+            # Step 3: Write Parquet to HDFS Lakehouse
             update_job_status(
                 job_id=job_id,
                 status="lakehouse_write",
                 progress_pct=65,
-                step_msg=f"Writing {total_commits:,} commits to MinIO Lakehouse (s3://raw)...",
+                step_msg=f"Writing {total_commits:,} commits to HDFS Lakehouse (hdfs://namenode:9000/raw)...",
                 total_commits=total_commits,
             )
 
-            upload_commits_to_minio(commits, owner, name)
+            upload_commits_to_hdfs(commits, owner, name)
 
             # Step 4: Analytics Enrichment & Serving Sync
             update_job_status(

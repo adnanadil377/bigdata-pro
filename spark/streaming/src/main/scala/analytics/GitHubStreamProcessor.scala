@@ -18,6 +18,7 @@ import java.util.concurrent.TimeUnit
  *     --packages \
  *       org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.4.3,\
  *       org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 \
+ *     --conf spark.hadoop.fs.defaultFS=hdfs://namenode:9000 \
  *     github-analytics-spark-assembly.jar analytics.GitHubStreamProcessor
  */
 object GitHubStreamProcessor {
@@ -26,7 +27,7 @@ object GitHubStreamProcessor {
 
     val kafkaBootstrap = sys.env.getOrElse("KAFKA_BOOTSTRAP", "kafka:29092")
     val kafkaTopic     = sys.env.getOrElse("KAFKA_TOPIC",     "github.events.raw")
-    val checkpointBase = sys.env.getOrElse("CHECKPOINT_DIR",  "s3a://warehouse/_checkpoints")
+    val checkpointBase = sys.env.getOrElse("CHECKPOINT_DIR",  "hdfs://namenode:9000/warehouse/_checkpoints")
 
     val spark = SparkSession.builder()
       .appName("GitHubStreamProcessor")
@@ -35,13 +36,9 @@ object GitHubStreamProcessor {
       .config("spark.sql.catalog.lakehouse",
         "org.apache.iceberg.spark.SparkCatalog")
       .config("spark.sql.catalog.lakehouse.type", "hadoop")
-      .config("spark.sql.catalog.lakehouse.warehouse", "s3a://warehouse/data")
-      .config("spark.hadoop.fs.s3a.endpoint",          "http://minio:9000")
-      .config("spark.hadoop.fs.s3a.access.key",        "minioadmin")
-      .config("spark.hadoop.fs.s3a.secret.key",        "minioadmin")
-      .config("spark.hadoop.fs.s3a.path.style.access", "true")
-      .config("spark.hadoop.fs.s3a.impl",
-        "org.apache.hadoop.fs.s3a.S3AFileSystem")
+      .config("spark.sql.catalog.lakehouse.warehouse", "hdfs://namenode:9000/warehouse/data")
+      // HDFS settings
+      .config("spark.hadoop.fs.defaultFS", "hdfs://namenode:9000")
       // Watermark tuning
       .config("spark.sql.shuffle.partitions", "8")
       .getOrCreate()

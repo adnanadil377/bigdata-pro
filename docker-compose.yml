@@ -9,12 +9,13 @@ x-spark-common: &spark-common
   environment:
     - SPARK_WORKER_CORES=2
     - SPARK_WORKER_MEMORY=2G
-    - AWS_ACCESS_KEY_ID=minioadmin
-    - AWS_SECRET_ACCESS_KEY=minioadmin
+    - HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
+    - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
   volumes:
     - ./spark:/opt/spark/work-dir
   depends_on:
     - spark-master
+    - namenode
   networks:
     - lakehouse
 
@@ -65,36 +66,74 @@ services:
     networks:
       - lakehouse
 
-  # ── Object Storage (S3-compatible) ────────────────────────────────────────
-  minio:
-    image: cgr.dev/chainguard/minio:latest
-    container_name: minio
-    command: server /data --console-address ":9001"
-    ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # Console
+  # ── HDFS ─────────────────────────────────────────────────────────────────
+  namenode:
+    image: apache/hadoop:3.3.6
+    container_name: namenode
+    hostname: namenode
+    user: root
+    command: ["hdfs", "namenode"]
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      CLUSTER_NAME: github-analytics
+      ENSURE_NAMENODE_DIR: /data/name/current
+      CORE-SITE.XML_fs.default.name: hdfs://namenode:9000
+      CORE-SITE.XML_fs.defaultFS: hdfs://namenode:9000
+      HDFS-SITE.XML_dfs.namenode.rpc-address: 0.0.0.0:9000
+      HDFS-SITE.XML_dfs.namenode.name.dir: /data/name
+      HDFS-SITE.XML_dfs.replication: 1
+      HDFS-SITE.XML_dfs.permissions.enabled: "false"
+      HDFS-SITE.XML_dfs.namenode.datanode.registration.ip-hostname-check: "false"
+    ports:
+      - "9000:9000"   # HDFS RPC
+      - "9870:9870"   # NameNode Web UI
     volumes:
-      - minio-data:/data
+      - hdfs-name:/data/name
     networks:
       - lakehouse
 
-  minio-init:
-    image: cgr.dev/chainguard/minio-client:latest-dev
-    container_name: minio-init
+  datanode:
+    image: apache/hadoop:3.3.6
+    container_name: datanode
+    hostname: datanode
+    user: root
+    command: ["hdfs", "datanode"]
+    environment:
+      CORE-SITE.XML_fs.default.name: hdfs://namenode:9000
+      CORE-SITE.XML_fs.defaultFS: hdfs://namenode:9000
+      HDFS-SITE.XML_dfs.datanode.data.dir: /data/data
+      HDFS-SITE.XML_dfs.datanode.data.dir.perm: "777"
+      HDFS-SITE.XML_dfs.replication: 1
+      HDFS-SITE.XML_dfs.permissions.enabled: "false"
     depends_on:
-      - minio
+      - namenode
+    volumes:
+      - hdfs-data:/data/data
+    networks:
+      - lakehouse
+
+  hdfs-init:
+    image: apache/hadoop:3.3.6
+    container_name: hdfs-init
+    user: root
+    depends_on:
+      - namenode
+      - datanode
     entrypoint: >
       /bin/sh -c "
-      sleep 3;
-      mc alias set local http://minio:9000 minioadmin minioadmin;
-      mc mb --ignore-existing local/lakehouse;
-      mc mb --ignore-existing local/warehouse;
-      mc mb --ignore-existing local/raw;
-      echo 'Buckets created successfully.';
+      until hdfs dfsadmin -fs hdfs://namenode:9000 -safemode get 2>/dev/null | grep -q 'Safe mode is OFF'; do
+        echo 'Waiting for NameNode to be ready and leave safe mode...';
+        hdfs dfsadmin -fs hdfs://namenode:9000 -safemode leave 2>/dev/null || true;
+        sleep 3;
+      done;
+      hdfs dfs -mkdir -p hdfs://namenode:9000/raw/git_events;
+      hdfs dfs -mkdir -p hdfs://namenode:9000/warehouse;
+      hdfs dfs -mkdir -p hdfs://namenode:9000/lakehouse;
+      hdfs dfs -chmod -R 777 hdfs://namenode:9000/;
+      echo 'HDFS directories created successfully.';
       "
+    environment:
+      CORE-SITE.XML_fs.default.name: hdfs://namenode:9000
+      CORE-SITE.XML_fs.defaultFS: hdfs://namenode:9000
     networks:
       - lakehouse
 
@@ -104,13 +143,15 @@ services:
     container_name: spark-master
     command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master", "--host", "spark-master"]
     environment:
-      - AWS_ACCESS_KEY_ID=minioadmin
-      - AWS_SECRET_ACCESS_KEY=minioadmin
+      - HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
     volumes:
       - ./spark:/opt/spark/work-dir
     ports:
       - "7077:7077"   # Spark master
       - "8080:8080"   # Spark UI
+    depends_on:
+      - namenode
     networks:
       - lakehouse
 
@@ -176,16 +217,16 @@ services:
       context: ./serving/api
       dockerfile: Dockerfile
     container_name: api
-    profiles: ["app"]
     depends_on:
       - postgres
+      - namenode
     ports:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql://analytics:analytics@postgres:5432/github_analytics
-      MINIO_ENDPOINT: http://minio:9000
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin
+      HDFS_NAMENODE_URL: http://namenode:9870
+      HDFS_BASE_PATH: /raw
+      HDFS_USER: root
     volumes:
       - ./serving/api:/app
     networks:
@@ -210,7 +251,8 @@ services:
 
 # ── Volumes ────────────────────────────────────────────────────────────────
 volumes:
-  minio-data:
+  hdfs-name:
+  hdfs-data:
   postgres-data:
   hive-meta-data:
 

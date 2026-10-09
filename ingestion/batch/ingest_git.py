@@ -2,41 +2,38 @@
 """
 Batch ingestion: clone repositories using Git Smart Protocol
 (--filter=blob:none --no-checkout) and extract commit metadata.
-Writes raw data as Parquet to MinIO under:
+Writes raw data as Parquet to HDFS under:
 
-  s3://raw/git_events/repository=<owner>__<name>/commits.parquet
+  hdfs://namenode:9000/raw/git_events/repository=<owner>__<name>/commits.parquet
 
 Usage:
     python ingest_git.py --repos torvalds/linux apache/spark
-    python ingest_git.py --repos-file repos.txt --output-path s3://raw/git_events
+    python ingest_git.py --repos-file repos.txt
 """
 from __future__ import annotations
 
 import argparse
+import io
 import os
 import subprocess
 import tempfile
 from pathlib import Path
 
-import boto3
+import hdfs as hdfs_lib
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-# ── MinIO / S3 config ──────────────────────────────────────────────────────
-MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
-AWS_ACCESS_KEY  = os.getenv("AWS_ACCESS_KEY_ID", "minioadmin")
-AWS_SECRET_KEY  = os.getenv("AWS_SECRET_ACCESS_KEY", "minioadmin")
-OUTPUT_BUCKET   = os.getenv("OUTPUT_BUCKET", "raw")
+# ── HDFS / WebHDFS config ──────────────────────────────────────────────────
+HDFS_NAMENODE_URL = os.getenv("HDFS_NAMENODE_URL", "http://namenode:9870")
+HDFS_USER         = os.getenv("HDFS_USER", "root")
+OUTPUT_BASE       = os.getenv("HDFS_BASE_PATH", "/raw")
 
 
-def s3_client():
-    return boto3.client(
-        "s3",
-        endpoint_url=MINIO_ENDPOINT,
-        aws_access_key_id=AWS_ACCESS_KEY,
-        aws_secret_access_key=AWS_SECRET_KEY,
-    )
+def hdfs_client() -> hdfs_lib.InsecureClient:
+    """Return a WebHDFS client pointed at the NameNode."""
+    return hdfs_lib.InsecureClient(HDFS_NAMENODE_URL, user=HDFS_USER)
+
 
 
 # ── Git extraction ─────────────────────────────────────────────────────────
@@ -133,11 +130,15 @@ def to_parquet_bytes(commits: list[dict]) -> bytes:
     return sink.getvalue().to_pybytes()
 
 
-def upload_to_minio(data: bytes, bucket: str, key: str) -> None:
-    import io
-    s3 = s3_client()
-    s3.put_object(Bucket=bucket, Key=key, Body=io.BytesIO(data))
-    print(f"  ✓ Uploaded s3://{bucket}/{key}  ({len(data) / 1024:.1f} KB)")
+def upload_to_hdfs(data: bytes, hdfs_path: str) -> None:
+    """Write bytes to HDFS via the WebHDFS REST API."""
+    client = hdfs_client()
+    # Ensure parent directory exists
+    parent = str(Path(hdfs_path).parent)
+    client.makedirs(parent)
+    with client.write(hdfs_path, overwrite=True) as writer:
+        writer.write(data)
+    print(f"  ✓ Uploaded hdfs://namenode:9000{hdfs_path}  ({len(data) / 1024:.1f} KB)")
 
 
 # ── Main ───────────────────────────────────────────────────────────────────
@@ -146,7 +147,7 @@ def ingest_repo(full_name: str, depth: int | None = None, branch: str | None = N
     owner, name = full_name.strip().split("/")
     url = f"https://github.com/{full_name}.git"
     partition = f"repository={owner}__{name}"
-    s3_key    = f"git_events/{partition}/commits.parquet"
+    hdfs_path  = f"{OUTPUT_BASE}/git_events/{partition}/commits.parquet"
 
     print(f"\n→ Ingesting {full_name} (branch={branch or 'default'}, depth={depth or 'all (no limit)'})")
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -162,11 +163,11 @@ def ingest_repo(full_name: str, depth: int | None = None, branch: str | None = N
             return
 
         data = to_parquet_bytes(commits)
-        upload_to_minio(data, OUTPUT_BUCKET, s3_key)
+        upload_to_hdfs(data, hdfs_path)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Git batch ingestion → MinIO Parquet")
+    parser = argparse.ArgumentParser(description="Git batch ingestion → HDFS Parquet")
     group  = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--repos",      nargs="+", help="List of owner/repo strings")
     group.add_argument("--repos-file", type=Path, help="File with one owner/repo per line")

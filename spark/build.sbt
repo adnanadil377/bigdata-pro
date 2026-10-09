@@ -22,11 +22,8 @@ libraryDependencies ++= Seq(
 
   // Iceberg
   "org.apache.iceberg" %% "iceberg-spark-runtime-3.5" % icebergVersion,
-  "org.apache.iceberg"  % "iceberg-aws"               % icebergVersion,
 
-  // AWS S3 / MinIO
-  "org.apache.hadoop"   % "hadoop-aws"                % "3.3.4",
-  "com.amazonaws"       % "aws-java-sdk-bundle"        % "1.12.367",
+  // AWS S3 / MinIO ─ removed; Spark image ships hadoop-common with native HDFS support
 
   // PostgreSQL JDBC driver
   "org.postgresql"      % "postgresql"                 % "42.7.2",
@@ -46,7 +43,7 @@ assembly / assemblyExcludedJars := {
   val cp = (assembly / fullClasspath).value
   cp filter { f =>
     val n = f.data.getName
-    n.startsWith("spark-") || n.startsWith("scala-library") || n.startsWith("hadoop-")
+    n.startsWith("spark-") || n.startsWith("scala-library")
   }
 }
 
